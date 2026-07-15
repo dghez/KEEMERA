@@ -2,8 +2,8 @@ import { PerspectiveCamera } from 'three'
 import store from "@gl/store"
 
 export default class Camera extends PerspectiveCamera {
-    constructor(props) {
-        super(props)
+    constructor(...props) {
+        super(...props)
 
         this.initialPosition = this.position.clone()
         this.#init()
