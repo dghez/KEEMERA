@@ -122,7 +122,7 @@ That is what `Tracker` needs. You can still move or orbit the camera afterwards;
 
 ## Scroll (Lenis)
 
-Scroll lives in `viewport.scroll` (`{ y, delta }`) and is set by the host:
+Scroll lives in `viewport.scroll` (`{ y, delta }`) and is set by the host. Drive Lenis and Keemera from the same ticker, Lenis first:
 
 ```js
 import Lenis from 'lenis'
@@ -132,13 +132,18 @@ const lenis = new Lenis({
     wheelMultiplier: 1.25,
     autoResize: false,
 })
-gsap.ticker.add(time => lenis.raf(time * 1000))
-gsap.ticker.lagSmoothing(0)
 
+const app = new Keemera({ wrapper, canvas, autoRun: false })
 lenis.on('scroll', ({ scroll }) => app.setScroll(scroll))
-
-// with autoResize: false, resize Lenis together with the app
 app.events.on(EVENTS.APP_RESIZE, () => lenis.resize(), PRIORITY.first)
+
+await app.ready
+
+gsap.ticker.add((time) => {
+    lenis.raf(time * 1000)
+    app.tick()
+})
+gsap.ticker.lagSmoothing(0)
 ```
 
 `setScroll` emits `EVENTS.APP_SCROLL` with `viewport.scroll`.

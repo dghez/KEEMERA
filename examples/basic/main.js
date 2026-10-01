@@ -7,23 +7,21 @@ import Blob from './Blob'
 
 const debug = new URLSearchParams(window.location.search).has('debug')
 
-// Lenis runs on the same gsap ticker as Keemera, so scroll and render stay in sync
 const lenis = new Lenis({
     lerp: 0.15,
     wheelMultiplier: 1.25,
     autoResize: false,
 })
-gsap.ticker.add(time => lenis.raf(time * 1000))
-gsap.ticker.lagSmoothing(0)
 
 /**
- * INSTANCE A: full-screen, autoRun on gsap.ticker, Tracker planes driven by Lenis
+ * INSTANCE A: full-screen, Tracker planes driven by Lenis
  */
 const mainEl = document.querySelector('.gl-main')
 const a = new Keemera({
     wrapper: mainEl,
     canvas: mainEl.querySelector('canvas'),
     debug,
+    autoRun: false,
     clearColor: 0x0b0b0c,
     camera: { fov: 45, useDomSize: true },
 })
@@ -47,7 +45,7 @@ a.events.on(EVENTS.APP_DESTROY, () => shepherdA.destroy())
 a.resize()
 
 /**
- * INSTANCE B: lives in a card, autoRun off, ticked manually, no internal gestures
+ * INSTANCE B: lives in a card, no internal gestures
  */
 const cardEl = document.querySelector('[data-card]')
 const b = new Keemera({
@@ -76,14 +74,20 @@ cardEl.addEventListener('pointermove', (e) => {
     b.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [e.clientX - r.left, e.clientY - r.top] })
 })
 
-gsap.ticker.add(b.tick)
-
 // custom events and priorities are per instance
 b.events.addEvents({ BLOB_PULSE: 'BLOB:PULSE' })
 b.events.addPriorities({ late: 40 })
 b.events.on('BLOB:PULSE', () => gsap.fromTo(blob.scale, { x: 1.2, y: 1.2, z: 1.2 }, { x: 1, y: 1, z: 1, duration: 0.6 }))
 b.events.on(EVENTS.WEBGL_AFTER_RENDER, () => {}, 'late')
 cardEl.addEventListener('click', () => b.events.emit('BLOB:PULSE'))
+
+// one ticker: Lenis first so setScroll lands before render
+gsap.ticker.add((time) => {
+    lenis.raf(time * 1000)
+    a.tick()
+    b.tick()
+})
+gsap.ticker.lagSmoothing(0)
 
 if (debug) {
     console.log('A events', a.events.getEvents())
