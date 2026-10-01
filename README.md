@@ -13,8 +13,7 @@ npm install keemera three gsap
 ## Quick start
 
 ```js
-import Keemera, { EVENTS, PRIORITY } from 'keemera'
-import { Tracker } from 'keemera/shards'
+import Keemera, { EVENTS } from 'keemera'
 
 const app = new Keemera({
     wrapper: document.querySelector('.gl'),
@@ -24,8 +23,9 @@ const app = new Keemera({
 await app.ready
 
 const mesh = new MyMesh({ store: app.store })
-app.scene.add(mesh)      // adds it to the Three.js graph
-app.shepherd.add(mesh)   // opt-in lifecycle: update / resize / destroy
+app.scene.add(mesh)
+
+app.events.on(EVENTS.APP_TICK, state => mesh.update(state))
 ```
 
 ## Options
@@ -33,7 +33,7 @@ app.shepherd.add(mesh)   // opt-in lifecycle: update / resize / destroy
 ```js
 new Keemera({
     wrapper, canvas,          // required: size is read from wrapper, rendering goes to canvas
-    debug: false,             // store.isDebug, enables console logs and unknown-event warnings
+    debug: false,             // store.isDebug, enables console logs
     showHelpers: false,       // store.showHelpers, a flag for your own helpers
     autoRun: true,            // add tick to gsap.ticker; false -> call app.tick() yourself
     autoResize: true,         // ResizeObserver on wrapper; false -> call app.resize() yourself
@@ -44,7 +44,10 @@ new Keemera({
     renderer: {},             // WebGLRenderer params, e.g. { antialias: true, stencil: true }
     clearColor: 0x000000,
     clearAlpha: 1,
-    camera: { fov: 60, near: 0.1, far: 300, position: [0, 0, 100], lookAt: [0, 0, 0] },
+    camera: {
+        fov: 60, near: 0.1, far: 300, position: [0, 0, 100], lookAt: [0, 0, 0],
+        useDomSize: false,    // true: 1 unit = 1 css pixel; position, near and far follow the wrapper on resize
+    },
     resources: {
         support: { ktx: false, draco: false, gainmap: false, envmap: false, curves: false },
         decoders: { draco: '/draco/', ktx: '/basis/' }, // defaults to the jsdelivr CDN
@@ -59,7 +62,6 @@ new Keemera({
 |---|---|
 | `ready` | Promise, resolves with the instance once preload is done and state is `ready` |
 | `renderer`, `camera`, `scene` | Three.js `WebGLRenderer`, `PerspectiveCamera`, `Scene` |
-| `shepherd` | Lifecycle manager driven by the app |
 | `store` | Per-instance shared state |
 | `events` | Per-instance emitter |
 | `resources` | Per-instance asset loader |
@@ -69,7 +71,7 @@ new Keemera({
 | `play()` / `pause()` | Add or remove `tick` from `gsap.ticker` |
 | `resize()` | Re-read the wrapper size |
 | `setScroll(y)` | Feed the scroll position (e.g. from Lenis) |
-| `destroy()` | Stops the loop, destroys Shepherd components, disposes resources and renderer, removes all listeners |
+| `destroy()` | Stops the loop, emits `APP_DESTROY`, disposes resources and renderer, removes all listeners |
 
 Statics: `Keemera.EVENTS`, `Keemera.PRIORITY`, `Keemera.STATES`.
 
@@ -79,12 +81,11 @@ Each `tick()`:
 
 1. `time`, `mouse` and `camera` update
 2. `EVENTS.APP_TICK` is emitted with the frame state
-3. `shepherd.update(state)`
-4. `EVENTS.WEBGL_BEFORE_RENDER`
-5. `renderer.render(scene, camera)`
-6. `EVENTS.WEBGL_AFTER_RENDER`
+3. `EVENTS.WEBGL_BEFORE_RENDER`
+4. `renderer.render(scene, camera)`
+5. `EVENTS.WEBGL_AFTER_RENDER`
 
-The frame state passed to events and to Shepherd hooks:
+The frame state passed to these events and to `APP_RESIZE`:
 
 ```js
 { delta, elapsed, frame, width, height, dpr, scroll, mouse }
@@ -103,6 +104,22 @@ await app.ready
 gsap.ticker.add(app.tick)               // or your own requestAnimationFrame
 ```
 
+## Camera
+
+On every resize the camera updates `aspect` and the projection matrix so the view matches the wrapper.
+
+Set `camera: { useDomSize: true }` to also fit the wrapper so 1 world unit is 1 CSS pixel:
+
+```js
+const z = height / Math.tan(this.fov * Math.PI / 360) * 0.5
+this.position.set(0, 0, z)
+this.far = z * 20
+this.near = this.far / 1000
+this.lookAt(0, 0, 0)
+```
+
+That is what `Tracker` needs. You can still move or orbit the camera afterwards; the next resize will put it back on the pixel-fit position.
+
 ## Scroll (Lenis)
 
 Scroll lives in `viewport.scroll` (`{ y, delta }`) and is set by the host:
@@ -110,11 +127,18 @@ Scroll lives in `viewport.scroll` (`{ y, delta }`) and is set by the host:
 ```js
 import Lenis from 'lenis'
 
-const lenis = new Lenis()
+const lenis = new Lenis({
+    lerp: 0.15,
+    wheelMultiplier: 1.25,
+    autoResize: false,
+})
 gsap.ticker.add(time => lenis.raf(time * 1000))
 gsap.ticker.lagSmoothing(0)
 
 lenis.on('scroll', ({ scroll }) => app.setScroll(scroll))
+
+// with autoResize: false, resize Lenis together with the app
+app.events.on(EVENTS.APP_RESIZE, () => lenis.resize(), PRIORITY.first)
 ```
 
 `setScroll` emits `EVENTS.APP_SCROLL` with `viewport.scroll`.
@@ -151,10 +175,11 @@ Default events:
 | `WEBGL_APP_LOADING` / `WEBGL_APP_LOADED` / `WEBGL_APP_READY` | none |
 | `WEBGL_STATE_CHANGE` | `{ state, prev }` |
 | `RESOURCES_PROGRESS` | `{ loaded, total, key, progress }` |
+| `APP_DESTROY` | none, emitted at the start of `destroy()` while everything is still alive |
 
 Default priorities: `first: -10`, `instant: 0`, `high: 10`, `mid: 20`, `low: 30`.
 
-With `debug: true`, subscribing to an event name that isn't registered prints a warning.
+Subscribing to an event name that isn't registered always prints a warning, in development and production. Register custom names with `addEvents()` first.
 
 ## Gestures
 
@@ -172,14 +197,21 @@ el.addEventListener('pointermove', (e) => {
 
 ## Shepherd (lifecycle)
 
-`app.scene.add(obj)` only adds to the Three.js graph. To get lifecycle calls, register the object on `app.shepherd`:
+`Shepherd` is a small, self-contained lifecycle manager. The app doesn't own one: create as many as you need and wire them to the events yourself.
 
 ```js
-app.shepherd.add(obj)       // obj.update(state), obj.resize(state), obj.destroy() if defined
-app.shepherd.remove(obj)
+import { Shepherd } from 'keemera'
+
+const shepherd = new Shepherd()
+shepherd.add(obj)           // obj.update(state), obj.resize(state), obj.destroy() if defined
+shepherd.remove(obj)
+
+app.events.on(EVENTS.APP_TICK, state => shepherd.update(state))
+app.events.on(EVENTS.APP_RESIZE, state => shepherd.resize(state))
+app.events.on(EVENTS.APP_DESTROY, () => shepherd.destroy())
 ```
 
-All hooks are optional. `Shepherd` is exported, so you can build nested roots like a scene group that manages its own children:
+All hooks are optional. Shepherds nest, so a scene group can manage its own children:
 
 ```js
 import { Group } from 'three'
@@ -202,7 +234,7 @@ class MyScene extends Group {
 
 const scene = new MyScene({ store: app.store })
 app.scene.add(scene)
-app.shepherd.add(scene)
+shepherd.add(scene)
 ```
 
 ## Store
@@ -210,7 +242,7 @@ app.shepherd.add(scene)
 `app.store` is a plain object per instance:
 
 ```js
-store.renderer, store.scene, store.camera, store.shepherd
+store.renderer, store.scene, store.camera
 store.viewport    // width, height, dpr, isMobile, isTouch, scroll { y, delta }
 store.mouse, store.time, store.gestures
 store.resources, store.events
@@ -283,12 +315,12 @@ Shards that need app data take a **required** `store` and throw if it's missing:
 ```js
 const box = new Tracker({ store: app.store, tracker: '.hero', preventUpdateScale: false })
 app.scene.add(box)
-app.shepherd.add(box)
+shepherd.add(box)
 ```
 
 Notes:
 
-- `Tracker` positions are in CSS pixels from the canvas center. Set up the camera so 1 unit is 1 pixel (see `examples/basic/Scene.js`).
+- `Tracker` positions are in CSS pixels from the canvas center, so create the app with `camera: { useDomSize: true }` (1 unit = 1 pixel).
 - `StencilMesh` and `SectionMask` need a stencil buffer: `new Keemera({ renderer: { stencil: true } })`.
 - `BufferViewer` draws on top of the main render, so call it after rendering:
 

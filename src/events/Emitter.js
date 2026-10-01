@@ -2,10 +2,9 @@ export default class Emitter {
     #labels
     #priorities
 
-    constructor({ labels, priorities, debug = false } = {}) {
+    constructor({ labels, priorities } = {}) {
         this.#labels = labels ? { ...labels } : undefined
         this.#priorities = { ...priorities }
-        this.debug = debug
         this.events = {}
     }
 
@@ -43,7 +42,7 @@ export default class Emitter {
     }
 
     on(event, cb, priority = 0) {
-        if (this.debug && this.#labels && !Object.values(this.#labels).includes(event)) {
+        if (this.#labels && !Object.values(this.#labels).includes(event)) {
             console.warn(`[Keemera] The "${event}" event is not registered. Add it with events.addEvents().`)
         }
 

@@ -5,7 +5,6 @@ import { EVENTS, PRIORITY, createEmitter } from './events'
 import createStore, { GL_STATES } from './store'
 import createUniforms from './Core/uniforms'
 import Core from './Core'
-import Shepherd from './Core/Shepherd'
 import Resources from './resources'
 
 export default class Keemera {
@@ -40,17 +39,15 @@ export default class Keemera {
         this.#isDestroyed = false
         this.#frameState = { delta: 0, elapsed: 0, frame: 0, width: 0, height: 0, dpr: 1, scroll: 0, mouse: undefined }
 
-        const events = createEmitter({ debug })
+        const events = createEmitter()
         const store = createStore({ events, isDebug: debug, showHelpers })
 
         this.events = events
         this.store = store
         this.scene = new Scene()
-        this.shepherd = new Shepherd()
 
         store.uniforms = createUniforms()
         store.scene = this.scene
-        store.shepherd = this.shepherd
         store.resources = new Resources({ store, ...resourcesOptions })
         this.resources = store.resources
 
@@ -129,8 +126,6 @@ export default class Keemera {
         const state = this.#syncFrameState()
 
         events.emit(EVENTS.APP_TICK, state)
-        this.shepherd.update(state)
-
         events.emit(EVENTS.WEBGL_BEFORE_RENDER, state)
         this.#core.render()
         events.emit(EVENTS.WEBGL_AFTER_RENDER, state)
@@ -157,7 +152,6 @@ export default class Keemera {
         this.#core.resize()
         const state = this.#syncFrameState()
 
-        this.shepherd.resize(state)
         this.store.events.emit(EVENTS.APP_RESIZE, state)
     }
 
@@ -169,12 +163,12 @@ export default class Keemera {
         if (this.#isDestroyed) return
 
         this.pause()
+        this.store.events.emit(EVENTS.APP_DESTROY)
         this.#isDestroyed = true
 
         this.#resizeObserver?.disconnect()
         this.#resizeObserver = undefined
 
-        this.shepherd.destroy()
         this.scene.clear()
         this.resources.dispose()
         this.#core.destroy()

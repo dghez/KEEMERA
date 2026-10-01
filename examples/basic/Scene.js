@@ -1,9 +1,9 @@
-import { Group, MathUtils } from 'three'
+import { Group } from 'three'
 import { Shepherd } from 'keemera'
 import { PlaneBackground } from 'keemera/shards'
 
-// The old Scene pattern, now user-land: a Group with its own Shepherd,
-// registered once on app.shepherd so it receives update/resize/destroy.
+// The old Scene pattern, now user-land: a Group with its own Shepherd that forwards update/resize/destroy.
+// Tracker planes need the camera created with { useDomSize: true } so 1 unit = 1 css pixel.
 export default class Scene extends Group {
     #store
     #shepherd
@@ -27,14 +27,6 @@ export default class Scene extends Group {
         })
     }
 
-    // 1 world unit = 1 css pixel, so tracked planes match their DOM boxes
-    #fitCameraToPixels({ height }) {
-        const { camera } = this.#store
-        camera.position.z = height / 2 / Math.tan(MathUtils.degToRad(camera.fov / 2))
-        camera.far = camera.position.z * 2
-        camera.updateProjectionMatrix()
-    }
-
     update(state) {
         this.#shepherd.update(state)
         this.children.forEach((child, i) => {
@@ -43,7 +35,6 @@ export default class Scene extends Group {
     }
 
     resize(state) {
-        this.#fitCameraToPixels(state)
         this.#shepherd.resize(state)
     }
 

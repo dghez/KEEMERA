@@ -21,6 +21,9 @@ const EVENTS = Object.freeze({
 
     // RESOURCES
     'RESOURCES_PROGRESS': 'RESOURCES:PROGRESS',
+
+    // LIFECYCLE
+    'APP_DESTROY': 'APP:DESTROY',
 })
 
 const PRIORITY = Object.freeze({
@@ -31,6 +34,6 @@ const PRIORITY = Object.freeze({
     low: 30,
 })
 
-const createEmitter = ({ debug = false } = {}) => new Emitter({ labels: EVENTS, priorities: PRIORITY, debug })
+const createEmitter = () => new Emitter({ labels: EVENTS, priorities: PRIORITY })
 
 export { Emitter, EVENTS, PRIORITY, createEmitter }

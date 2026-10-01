@@ -1,6 +1,6 @@
 import { gsap } from 'gsap'
 import Lenis from 'lenis'
-import Keemera, { EVENTS, PRIORITY } from 'keemera'
+import Keemera, { EVENTS, PRIORITY, Shepherd } from 'keemera'
 
 import Scene from './Scene'
 import Blob from './Blob'
@@ -8,7 +8,11 @@ import Blob from './Blob'
 const debug = new URLSearchParams(window.location.search).has('debug')
 
 // Lenis runs on the same gsap ticker as Keemera, so scroll and render stay in sync
-const lenis = new Lenis()
+const lenis = new Lenis({
+    lerp: 0.15,
+    wheelMultiplier: 1.25,
+    autoResize: false,
+})
 gsap.ticker.add(time => lenis.raf(time * 1000))
 gsap.ticker.lagSmoothing(0)
 
@@ -21,17 +25,25 @@ const a = new Keemera({
     canvas: mainEl.querySelector('canvas'),
     debug,
     clearColor: 0x0b0b0c,
-    camera: { fov: 45 },
+    camera: { fov: 45, useDomSize: true },
 })
 
 lenis.on('scroll', ({ scroll }) => a.setScroll(scroll))
 a.setScroll(lenis.scroll)
 
+// Lenis autoResize is off: resize it together with the app
+a.events.on(EVENTS.APP_RESIZE, () => lenis.resize(), PRIORITY.first)
+
 await a.ready
 
+const shepherdA = new Shepherd()
 const scene = new Scene({ store: a.store })
 a.scene.add(scene)
-a.shepherd.add(scene)
+shepherdA.add(scene)
+
+a.events.on(EVENTS.APP_TICK, state => shepherdA.update(state))
+a.events.on(EVENTS.APP_RESIZE, state => shepherdA.resize(state))
+a.events.on(EVENTS.APP_DESTROY, () => shepherdA.destroy())
 a.resize()
 
 /**
@@ -50,9 +62,13 @@ const b = new Keemera({
 
 await b.ready
 
+const shepherdB = new Shepherd()
 const blob = new Blob({ store: b.store })
 b.scene.add(blob)
-b.shepherd.add(blob)
+shepherdB.add(blob)
+
+b.events.on(EVENTS.APP_TICK, state => shepherdB.update(state))
+b.events.on(EVENTS.APP_DESTROY, () => shepherdB.destroy())
 
 // external gesture logic feeding the internal pointer, using the documented payload
 cardEl.addEventListener('pointermove', (e) => {
@@ -67,7 +83,6 @@ b.events.addEvents({ BLOB_PULSE: 'BLOB:PULSE' })
 b.events.addPriorities({ late: 40 })
 b.events.on('BLOB:PULSE', () => gsap.fromTo(blob.scale, { x: 1.2, y: 1.2, z: 1.2 }, { x: 1, y: 1, z: 1, duration: 0.6 }))
 b.events.on(EVENTS.WEBGL_AFTER_RENDER, () => {}, 'late')
-a.events.on(EVENTS.APP_TICK, () => {}, PRIORITY.first)
 cardEl.addEventListener('click', () => b.events.emit('BLOB:PULSE'))
 
 if (debug) {
