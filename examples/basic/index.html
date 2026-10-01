@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>KEEMERA - basic example</title>
+        <style>
+            * { box-sizing: border-box; }
+            html, body { margin: 0; background: #0b0b0c; color: #eee; font-family: system-ui, sans-serif; }
+
+            .gl-main { position: fixed; inset: 0; pointer-events: none; }
+            .gl-main canvas { display: block; width: 100%; height: 100%; }
+
+            main { position: relative; padding: 20vh 8vw 40vh; display: grid; gap: 40vh; }
+            h1 { margin: 0; font-size: clamp(32px, 6vw, 80px); }
+            p { max-width: 40ch; opacity: 0.7; }
+
+            .tracked { width: min(60vw, 520px); height: 320px; border: 1px dashed #555; display: grid; place-items: center; }
+            .tracked:nth-child(odd) { justify-self: end; }
+
+            .card { width: 420px; max-width: 100%; height: 280px; border-radius: 12px; overflow: hidden; background: #151517; }
+            .card canvas { display: block; width: 100%; height: 100%; }
+        </style>
+    </head>
+    <body>
+        <div class="gl-main"><canvas></canvas></div>
+
+        <main>
+            <section>
+                <h1>KEEMERA</h1>
+                <p>Instance A is a fixed full-screen canvas. Planes follow the dashed boxes with the Tracker shard, and the scroll comes from Lenis through app.setScroll().</p>
+            </section>
+
+            <div class="tracked" data-track>tracked box</div>
+            <div class="tracked" data-track>tracked box</div>
+
+            <section>
+                <p>Instance B lives inside this card: its own renderer, store, events and Shepherd. It uses autoRun: false and is ticked manually.</p>
+                <div class="card" data-card><canvas></canvas></div>
+            </section>
+
+            <div class="tracked" data-track>tracked box</div>
+        </main>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

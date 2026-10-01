@@ -1,209 +1,350 @@
 # KEEMERA
 
-> **Disclaimer:** This repo is a port from an existing Nuxt project. It is not fully self-contained yet — some dependencies from the original setup are missing. In particular, you'll need to wire up path aliases used throughout the codebase (`@gl/` for this module, `@js/` for shared app utilities) and provide the events emitter (`@js/events`) that drives the render loop and GL lifecycle. Imports referencing those aliases will not resolve until you add them to your bundler config or replace them with relative paths.
+A self-contained **Three.js starter library** for WebGL experiences. Each `new Keemera()` is an isolated app with its own renderer, camera, store, event system, viewport (size and scroll), resources and lifecycle manager, so you can run several on the same page.
 
-A **Three.js starter** for building WebGL experiences. It ships with renderer setup, a shared state store, asset loading, reusable shader snippets, and a scene lifecycle pattern — so you can focus on your own 3D content instead of boilerplate.
+It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations and Lenis scroll.
 
-The `Scene/` folder is intentionally empty. Add your meshes, effects, and logic there.
-
-## What's included
-
-| Module | Role |
-|---|---|
-| `Core/` | WebGL renderer, camera, time, mouse, size, gestures |
-| `Scene/` | Your scene graph — add components here |
-| `store/` | Shared reactive state (renderer, camera, DOM refs, debug flags) |
-| `resources/` | YAML-driven asset loader (textures, GLTF, KTX2) |
-| `shaders/` | Reusable GLSL snippets (noise, blending, color, UV helpers) |
-| `shards/` | Optional reusable Three.js building blocks |
-| `helpers/` | Small geometry / UV utilities |
-| `data/` | Runtime settings (layers, render order) |
-
-## Tech stack
-
-- **Three.js** — rendering
-- **@vue/reactivity** — reactive store
-
-Node **20.19.0** (see `.nvmrc`).
-
-## Project structure
-
-```
-.
-├── index.js              # Gl class — boot, load, render loop hooks
-├── store/index.js        # Shared state + GL lifecycle events
-├── Core/
-│   ├── index.js          # Renderer, resize, render
-│   ├── Camera/           # Perspective camera
-│   ├── Time/             # Delta / elapsed time
-│   ├── Mouse/            # Smoothed pointer
-│   ├── Size/             # Viewport dimensions
-│   ├── Gestures/         # Pointer / touch input
-│   ├── Sheperd/          # Scene component lifecycle manager
-│   └── uniforms/shared.js
-├── Scene/
-│   └── index.js          # ← start here
-├── resources/
-│   ├── index.js          # Asset loader
-│   └── data.yml          # Asset manifest
-├── shaders/              # Shared GLSL imports
-├── shards/               # Reusable components
-├── helpers/
-└── data/settings.yml
+```bash
+npm install keemera three gsap
 ```
 
-## How it works
+`three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
 
-### Boot sequence
-
-1. Instantiate `Gl` with a DOM `wrapper` and `canvas`.
-2. `Core` creates the WebGL renderer, camera, and registers subsystems on the store.
-3. Assets load from `resources/data.yml` (and any extra data you fetch in `#load()`).
-4. `Scene` is added to the Three.js scene graph.
-5. The store emits lifecycle states: `loading` → `loaded` → `ready`.
-
-### Render loop
-
-The host app drives the loop through an event bus (`@js/events`):
-
-| Event | When |
-|---|---|
-| `APP_TICK` | Every frame — updates scene, then renders |
-| `APP_RESIZE` | Viewport size changes |
-
-### Scene components
-
-`Scene` extends a Three.js `Group` and uses **Shepherd** to manage child components. Each component can implement `update()`, `resize()`, and `destroy()`.
-
-### Shepherd
-
-`Core/Sheperd` is a small lifecycle manager — a registry that holds scene components and forwards calls to them. When `Scene` receives `update`, `resize`, or `destroy`, Shepherd iterates its list and calls the matching method on each registered component (if it exists). This keeps `Scene/index.js` thin: you add components with `shepherd.add()`, add them to the Three.js graph with `this.add()`, and Shepherd handles the rest.
-
-Components only need to implement the hooks they care about — all three are optional.
+## Quick start
 
 ```js
-// Scene/index.js
+import Keemera, { EVENTS, PRIORITY } from 'keemera'
+import { Tracker } from 'keemera/shards'
+
+const app = new Keemera({
+    wrapper: document.querySelector('.gl'),
+    canvas: document.querySelector('.gl canvas'),
+})
+
+await app.ready
+
+const mesh = new MyMesh({ store: app.store })
+app.scene.add(mesh)      // adds it to the Three.js graph
+app.shepherd.add(mesh)   // opt-in lifecycle: update / resize / destroy
+```
+
+## Options
+
+```js
+new Keemera({
+    wrapper, canvas,          // required: size is read from wrapper, rendering goes to canvas
+    debug: false,             // store.isDebug, enables console logs and unknown-event warnings
+    showHelpers: false,       // store.showHelpers, a flag for your own helpers
+    autoRun: true,            // add tick to gsap.ticker; false -> call app.tick() yourself
+    autoResize: true,         // ResizeObserver on wrapper; false -> call app.resize() yourself
+    gestures: true,           // internal @use-gesture; false -> emit the mouse events yourself
+    gestureTarget: window,
+    dpr: [1, 1.6],            // pixel ratio clamp [min, max]
+    breakpoint: 650,          // viewport.isMobile below this width
+    renderer: {},             // WebGLRenderer params, e.g. { antialias: true, stencil: true }
+    clearColor: 0x000000,
+    clearAlpha: 1,
+    camera: { fov: 60, near: 0.1, far: 300, position: [0, 0, 100], lookAt: [0, 0, 0] },
+    resources: {
+        support: { ktx: false, draco: false, gainmap: false, envmap: false, curves: false },
+        decoders: { draco: '/draco/', ktx: '/basis/' }, // defaults to the jsdelivr CDN
+    },
+    preload: [],              // assets loaded before 'ready'
+})
+```
+
+## Instance API
+
+| Member | Description |
+|---|---|
+| `ready` | Promise, resolves with the instance once preload is done and state is `ready` |
+| `renderer`, `camera`, `scene` | Three.js `WebGLRenderer`, `PerspectiveCamera`, `Scene` |
+| `shepherd` | Lifecycle manager driven by the app |
+| `store` | Per-instance shared state |
+| `events` | Per-instance emitter |
+| `resources` | Per-instance asset loader |
+| `viewport`, `mouse`, `time` | Shortcuts to the store entries |
+| `state` | `idle`, `loading`, `loaded`, `ready` or `destroyed` |
+| `tick()` | Render one frame (bound, safe to pass as a callback) |
+| `play()` / `pause()` | Add or remove `tick` from `gsap.ticker` |
+| `resize()` | Re-read the wrapper size |
+| `setScroll(y)` | Feed the scroll position (e.g. from Lenis) |
+| `destroy()` | Stops the loop, destroys Shepherd components, disposes resources and renderer, removes all listeners |
+
+Statics: `Keemera.EVENTS`, `Keemera.PRIORITY`, `Keemera.STATES`.
+
+## Frame order
+
+Each `tick()`:
+
+1. `time`, `mouse` and `camera` update
+2. `EVENTS.APP_TICK` is emitted with the frame state
+3. `shepherd.update(state)`
+4. `EVENTS.WEBGL_BEFORE_RENDER`
+5. `renderer.render(scene, camera)`
+6. `EVENTS.WEBGL_AFTER_RENDER`
+
+The frame state passed to events and to Shepherd hooks:
+
+```js
+{ delta, elapsed, frame, width, height, dpr, scroll, mouse }
+```
+
+## Loop
+
+By default the app adds `tick` to `gsap.ticker` once it's ready. Use `pause()` and `play()` to stop and resume. Paused time is discarded, so animations don't jump.
+
+To drive it yourself:
+
+```js
+const app = new Keemera({ wrapper, canvas, autoRun: false })
+await app.ready
+
+gsap.ticker.add(app.tick)               // or your own requestAnimationFrame
+```
+
+## Scroll (Lenis)
+
+Scroll lives in `viewport.scroll` (`{ y, delta }`) and is set by the host:
+
+```js
+import Lenis from 'lenis'
+
+const lenis = new Lenis()
+gsap.ticker.add(time => lenis.raf(time * 1000))
+gsap.ticker.lagSmoothing(0)
+
+lenis.on('scroll', ({ scroll }) => app.setScroll(scroll))
+```
+
+`setScroll` emits `EVENTS.APP_SCROLL` with `viewport.scroll`.
+
+## Events and priorities
+
+Every instance has its own emitter. Listeners run from the lowest priority number to the highest.
+
+```js
+app.events.on(EVENTS.APP_TICK, fn)                       // priority 0
+app.events.on(EVENTS.APP_TICK, fn, PRIORITY.first)       // -10, runs before
+app.events.on(EVENTS.APP_TICK, fn, 'low')                // by name
+const off = app.events.on(EVENTS.APP_RESIZE, fn)
+off()                                                    // or app.events.off(event, fn)
+app.events.once(EVENTS.WEBGL_APP_READY, fn)
+
+app.events.getEvents()                                   // all registered names
+app.events.addEvents({ MY_EVENT: 'MY:EVENT' })
+app.events.getPriorities()
+app.events.addPriorities({ late: 40 })
+```
+
+Default events:
+
+| Key | Payload |
+|---|---|
+| `APP_TICK` | frame state |
+| `APP_RESIZE` | frame state |
+| `APP_SCROLL` | `{ y, delta }` |
+| `APP_MOUSE_MOVE` | `{ xy: [x, y] }` |
+| `APP_MOUSE_DRAG` | `{ xy: [x, y], active, dragging }` |
+| `APP_MOUSE_HOLD` | `active` (boolean) |
+| `WEBGL_BEFORE_RENDER` / `WEBGL_AFTER_RENDER` | frame state |
+| `WEBGL_APP_LOADING` / `WEBGL_APP_LOADED` / `WEBGL_APP_READY` | none |
+| `WEBGL_STATE_CHANGE` | `{ state, prev }` |
+| `RESOURCES_PROGRESS` | `{ loaded, total, key, progress }` |
+
+Default priorities: `first: -10`, `instant: 0`, `high: 10`, `mid: 20`, `low: 30`.
+
+With `debug: true`, subscribing to an event name that isn't registered prints a warning.
+
+## Gestures
+
+With `gestures: true` the app binds `@use-gesture/vanilla` to `gestureTarget` and emits `APP_MOUSE_MOVE`, `APP_MOUSE_DRAG` and `APP_MOUSE_HOLD`. `app.mouse` listens to those events and keeps `static`, `smooth` and `smoother` positions in normalized device coordinates, plus `viewport` and `viewportSmooth` in pixels.
+
+To use your own input logic, disable the internal binding and emit the same events with the same payload. `xy` is in pixels, and `mouse` normalizes it against the viewport size, so for a canvas that doesn't fill the window, pass coordinates relative to the wrapper:
+
+```js
+const app = new Keemera({ wrapper, canvas, gestures: false })
+
+el.addEventListener('pointermove', (e) => {
+    app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [e.clientX, e.clientY] })
+})
+```
+
+## Shepherd (lifecycle)
+
+`app.scene.add(obj)` only adds to the Three.js graph. To get lifecycle calls, register the object on `app.shepherd`:
+
+```js
+app.shepherd.add(obj)       // obj.update(state), obj.resize(state), obj.destroy() if defined
+app.shepherd.remove(obj)
+```
+
+All hooks are optional. `Shepherd` is exported, so you can build nested roots like a scene group that manages its own children:
+
+```js
 import { Group } from 'three'
-import Shepherd from '@gl/Core/Sheperd'
-import MyEffect from './MyEffect'
+import { Shepherd } from 'keemera'
 
-export default class Scene extends Group {
-    #shepherd
+class MyScene extends Group {
+    #shepherd = new Shepherd()
 
-    constructor() {
+    constructor({ store }) {
         super()
-        this.#shepherd = new Shepherd()
-        this.#init()
-    }
-
-    #init() {
-        const effect = new MyEffect()
+        const effect = new MyEffect({ store })
         this.#shepherd.add(effect)
         this.add(effect)
     }
 
-    update(v) { this.#shepherd.update(v) }
-    resize() { this.#shepherd.resize() }
+    update(state) { this.#shepherd.update(state) }
+    resize(state) { this.#shepherd.resize(state) }
     destroy() { this.#shepherd.destroy() }
 }
+
+const scene = new MyScene({ store: app.store })
+app.scene.add(scene)
+app.shepherd.add(scene)
 ```
 
-Access shared state anywhere via the store:
+## Store
+
+`app.store` is a plain object per instance:
 
 ```js
-import store from '@gl/store'
-
-store.camera.position.z = 50
-store.helpers.uniforms.time.value = store.time.elapsed
+store.renderer, store.scene, store.camera, store.shepherd
+store.viewport    // width, height, dpr, isMobile, isTouch, scroll { y, delta }
+store.mouse, store.time, store.gestures
+store.resources, store.events
+store.uniforms    // shared uniforms: time, timeScale, resolution, mouse.smooth, mouse.smoother
+store.dom         // { wrapper, canvas }
+store.isDebug, store.showHelpers, store.state
 ```
 
-## Assets
-
-Declare assets in `resources/data.yml`:
-
-```yaml
-- key: 'my-texture'
-  type: 'texture'
-  path: 'gl/images/my-texture.jpg'
-
-- key: 'my-model'
-  type: 'gltf'
-  path: 'gl/models/my-model.glb'
-```
-
-Load and retrieve them:
+You can add your own keys. Pass the store to components that need app data, rather than importing anything global.
 
 ```js
-import resources from '@gl/resources'
-
-await resources.load()
-const texture = resources.get('my-texture')
+const material = new ShaderMaterial({
+    uniforms: { uTime: app.store.uniforms.time },
+})
 ```
 
-Supported types: `texture` (with optional KTX2 compression), `gltf`, `envmap`, `gainmap`, `fbo`.
+## Resources
+
+Nothing is loaded by default. Each instance has its own cache.
+
+```js
+await app.resources.load([
+    { key: 'paper', type: 'texture', path: '/gl/paper.jpg', colorSpace: 'SRGBColorSpace' },
+    { key: 'robot', type: 'gltf', path: '/gl/robot.glb' },
+], { onProgress: ({ progress }) => {} })
+
+app.resources.get('paper')
+app.resources.has('robot')
+app.resources.getAll()      // Map
+```
+
+Built-in types: `texture`, `gltf`, `fbo` (texture plus pixel data in `texture.userData.fbo`).
+
+Optional loaders, enabled on creation (`resources.support`) or later:
+
+```js
+await app.resources.addSupport({ ktx: true, draco: true, envmap: true, gainmap: true, curves: true })
+```
+
+| Support | Enables |
+|---|---|
+| `ktx` | `texture` assets with `compress: true` or `compress: { responsive: true }` (KTX2, `-desktop` / `-mobile` suffix) |
+| `draco` | Draco-compressed GLTF |
+| `envmap` | `type: 'envmap'` (`.hdr` via `HDRLoader`, equirectangular mapping) |
+| `gainmap` | `type: 'gainmap'` (needs `@monogrid/gainmap-js`) |
+| `curves` | the `UTSUBO_curve_extension` GLTF extension |
+
+Loading an asset that needs a disabled loader throws a clear error. A failed request rejects the `load()` promise. Use `preload` on creation for assets that must be ready before `ready`. `destroy()` disposes everything that was loaded.
+
+## Shards
+
+Reusable building blocks:
+
+```js
+import { Tracker, PlaneBackground, SectionMask, StencilMesh, FitModel, FullscreenQuad, BufferViewer } from 'keemera/shards'
+```
+
+| Shard | Purpose | Needs `store` |
+|---|---|---|
+| `Tracker` | Group that follows a DOM element (position, optional scale, sticky) | yes |
+| `PlaneBackground` | `Tracker` with a plane mesh | yes |
+| `SectionMask` | Stencil mask following a DOM element | yes |
+| `BufferViewer` | Debug texture overlay | yes |
+| `StencilMesh` | Stencil write mesh | no |
+| `FitModel` | Scale a model to a size or a tracker | no |
+| `FullscreenQuad` | Full-screen triangle | no |
+
+Shards that need app data take a **required** `store` and throw if it's missing:
+
+```js
+const box = new Tracker({ store: app.store, tracker: '.hero', preventUpdateScale: false })
+app.scene.add(box)
+app.shepherd.add(box)
+```
+
+Notes:
+
+- `Tracker` positions are in CSS pixels from the canvas center. Set up the camera so 1 unit is 1 pixel (see `examples/basic/Scene.js`).
+- `StencilMesh` and `SectionMask` need a stencil buffer: `new Keemera({ renderer: { stencil: true } })`.
+- `BufferViewer` draws on top of the main render, so call it after rendering:
+
+```js
+const viewer = new BufferViewer({ store: app.store })
+viewer.createView(texture)
+app.events.on(EVENTS.WEBGL_AFTER_RENDER, () => viewer.render())
+app.events.on(EVENTS.APP_RESIZE, () => viewer.resize())
+```
+
+## Helpers
+
+```js
+import { getPlaneSize, uvCover } from 'keemera/helpers'
+
+getPlaneSize(camera, distance)     // visible { width, height } at a distance
+uvCover(texture, [width, height])  // CSS "cover" on a texture
+```
 
 ## Shaders
 
-Import shared GLSL from `shaders/` in your materials:
+GLSL snippets as JS strings, so no bundler plugin is needed. Each one is wrapped in an include guard, so including it twice is safe. `curlNoise` already contains `noise3d`.
 
 ```js
-import snoise from '@gl/shaders/noise3d.glsl'
-import map from '@gl/shaders/map.glsl'
+import { noise3d, curlNoise, map } from 'keemera/shaders'
 
-const fragmentShader = /* glsl */`
-    ${snoise}
+const vertexShader = /* glsl */ `
+    ${noise3d}
     ${map}
     // ...
 `
 ```
 
-Available snippets include `noise3d`, `curlNoise`, `map`, `coverUv`, `aastep`, `remapProgress`, and blend modes.
+Available: `noise3d`, `curlNoise`, `map`, `coverUv`, `aastep`, `remapProgress`, `scaleFromPoint`, `saturation`, `brightnessContrast`, `RGBtoHSL`, `blendNormal`, `blendOverlay`, `blendScreen`.
 
-## Shards
+## Multiple instances
 
-Optional reusable components in `shards/`:
+Nothing is global, so instances never share state:
 
-| Shard | Purpose |
-|---|---|
-| `BufferViewer` | Debug texture overlay |
-| `FullscreenQuad` | Full-screen pass geometry |
-| `FitModel` | Scale a model to a bounding volume |
-| `PlaneBackground` | Flat background plane |
-| `SectionMask` | Stencil-based section masking |
-| `StencilMesh` | Stencil write mesh |
-| `Tracker` | DOM element → 3D position sync |
-
-Copy or import shards as needed — none are wired into the default scene.
-
-## Debug mode
-
-| URL param | Effect |
-|---|---|
-| `?debug` | Enables debug tooling |
-| `?showHelpers` | Shows scene helpers |
-
-## Configuration
-
-- **`resources/data.yml`** — Asset manifest
-- **`data/settings.yml`** — Render layers and draw order
-
-## Getting started checklist
-
-1. Provide a wrapper element and canvas in your HTML.
-2. Wire up `APP_TICK` and `APP_RESIZE` events from your app loop.
-3. Create scene components under `Scene/` and register them in `Scene/index.js`.
-4. Add assets to `resources/data.yml` and place files in your static assets folder.
-5. Trim any leftover project-specific logic in `index.js` `#load()` (e.g. custom data fetches you no longer need).
-6. Remove unused entries from the store if you don't need them.
+```js
+const a = new Keemera({ wrapper: elA, canvas: canvasA })
+const b = new Keemera({ wrapper: elB, canvas: canvasB, autoRun: false, gestures: false })
+```
 
 ## Development
 
 ```bash
-nvm use    # Node 20.19.0
+nvm use          # Node 20.19+
+npm install
+npm run dev      # examples/basic playground (two instances, Lenis, Tracker)
+npm run build    # dist/ (ESM, preserved modules)
+npm run lint
 ```
 
-ESLint and Prettier config is included. Code style: 4-space indent, no semicolons.
+Add `?debug` to the example URL to turn on debug logs.
 
 ## License
 
-See the repository owner for licensing details.
+MIT
