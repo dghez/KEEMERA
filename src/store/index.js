@@ -40,7 +40,6 @@ export default function createStore({ events, isDebug = false, showHelpers = fal
         time: undefined,
         gestures: undefined,
         uniforms: undefined,
-        dpr: 1,
         isDebug,
         showHelpers,
     }

@@ -288,16 +288,14 @@ export default class Resources {
 
         const total = assets.length
         let loaded = 0
-        const { events, isDebug } = this.#store || {}
+        const { events } = this.#store || {}
 
         const onLoaded = (el, asset, isCached) => {
             if (save && !isCached) { this.#resources.set(el.key, asset) }
             loaded += 1
 
-            if (isDebug) {
-                const label = `${el.type}${el.compress ? '-ktx' : ''}`
-                console.log(`LOADED:[${label}][${el.key}]${isCached ? ':CACHED' : ''}`)
-            }
+            const label = `${el.type}${el.compress ? '-ktx' : ''}`
+            console.log(`LOADED:[${label}][${el.key}]${isCached ? ':CACHED' : ''}`)
 
             const progress = { loaded, total, key: el.key, progress: total ? loaded / total : 1 }
             onProgress?.(progress)

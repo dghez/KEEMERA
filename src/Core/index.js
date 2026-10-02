@@ -50,7 +50,6 @@ export default class Core {
         renderer.setPixelRatio(dpr)
 
         store.dom = this.#dom
-        store.dpr = dpr
         store.renderer = renderer
         store.viewport = new Viewport({ store, breakpoint })
         store.time = new Time({ store })

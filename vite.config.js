@@ -9,8 +9,8 @@ export default defineConfig({
     build: {
         outDir: resolve(root, 'dist'),
         emptyOutDir: true,
-        minify: false,
-        sourcemap: true,
+        minify: true,
+        sourcemap: false,
         lib: {
             entry: {
                 index: resolve(root, 'src/index.js'),
