@@ -31,7 +31,7 @@ export default function createStore({ events, isDebug = false, showHelpers = fal
 
         events,
         dom: undefined,
-        renderer: undefined,
+        gl: undefined,
         scene: undefined,
         camera: undefined,
         resources: undefined,

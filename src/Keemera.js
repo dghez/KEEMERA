@@ -56,7 +56,7 @@ export default class Keemera {
         this.ready = this.#init()
     }
 
-    get renderer() { return this.store.renderer }
+    get gl() { return this.store.gl }
     get camera() { return this.store.camera }
     get viewport() { return this.store.viewport }
     get mouse() { return this.store.mouse }

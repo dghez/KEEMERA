@@ -257,7 +257,7 @@ How the parts of your scene share data, talk to each other, load assets and clea
 `app.store` is a plain object per instance:
 
 ```js
-store.renderer // the WebGLRenderer
+store.gl // the WebGLRenderer
 store.scene // the main Scene
 store.camera // the PerspectiveCamera
 store.viewport // width, height, dpr, isMobile, isTouch, scroll { y, delta }

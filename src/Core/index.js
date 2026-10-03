@@ -35,7 +35,7 @@ export default class Core {
         const [minDpr, maxDpr] = Array.isArray(dprRange) ? dprRange : [dprRange, dprRange]
         const dpr = MathUtils.clamp(window.devicePixelRatio, minDpr, maxDpr)
 
-        const renderer = new WebGLRenderer({
+        const gl = new WebGLRenderer({
             powerPreference: 'high-performance',
             depth: true,
             stencil: false,
@@ -43,21 +43,21 @@ export default class Core {
             canvas: this.#dom.canvas,
         })
 
-        renderer.outputColorSpace = SRGBColorSpace
-        renderer.shadowMap.enabled = false
-        renderer.setClearColor(clearColor)
-        renderer.setClearAlpha(clearAlpha)
-        renderer.setPixelRatio(dpr)
+        gl.outputColorSpace = SRGBColorSpace
+        gl.shadowMap.enabled = false
+        gl.setClearColor(clearColor)
+        gl.setClearAlpha(clearAlpha)
+        gl.setPixelRatio(dpr)
 
         store.dom = this.#dom
-        store.renderer = renderer
+        store.gl = gl
         store.viewport = new Viewport({ store, breakpoint })
         store.time = new Time({ store })
         store.mouse = new Mouse({ store })
         store.gestures = gestures ? new Gestures({ store, target: gestureTarget }) : undefined
         store.camera = new Camera({ store, ...cameraOptions })
 
-        store.resources?.addContext(renderer)
+        store.resources?.addContext(gl)
 
         this.resize()
     }
@@ -70,26 +70,26 @@ export default class Core {
     }
 
     render() {
-        const { renderer, scene, camera } = this.#store
-        renderer.render(scene, camera)
+        const { gl, scene, camera } = this.#store
+        gl.render(scene, camera)
     }
 
     resize() {
-        const { renderer, viewport, camera } = this.#store
+        const { gl, viewport, camera } = this.#store
         const width = this.#dom.wrapper.clientWidth
         const height = this.#dom.wrapper.clientHeight
-        const dpr = renderer.getPixelRatio()
+        const dpr = gl.getPixelRatio()
 
-        renderer.setSize(width, height)
+        gl.setSize(width, height)
         viewport.setSize(width, height, dpr)
         camera.resize()
     }
 
     destroy() {
-        const { renderer, gestures, mouse, time } = this.#store
+        const { gl, gestures, mouse, time } = this.#store
         gestures?.destroy()
         mouse?.destroy()
         time?.destroy()
-        renderer?.dispose()
+        gl?.dispose()
     }
 }

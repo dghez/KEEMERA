@@ -78,7 +78,7 @@ export default class BufferViewer {
 
     render() {
         if (!this.#views.length) return
-        const { renderer: gl, viewport } = this.#store
+        const { gl, viewport } = this.#store
         const viewportW = viewport.width
         const viewportH = viewport.height
         const prevAutoClear = gl.autoClear
