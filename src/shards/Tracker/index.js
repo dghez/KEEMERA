@@ -10,7 +10,8 @@ const STICKY_DEFAULTS = {
 
 function getEdge(r, edge) {
     if (edge === 'center') return r.top + r.height * 0.5
-    return r[edge]
+    if (edge === 'top' || edge === 'bottom') return r[edge]
+    throw new Error(`Invalid trigger edge: ${edge}`)
 }
 
 function parseViewportOffset(part, viewportHeight) {
@@ -35,12 +36,14 @@ function scrollAtPosition(el, position, scrollY, viewportHeight) {
     return getEdge(r, triggerPart) + scrollY - parseViewportOffset(viewportPart, viewportHeight)
 }
 
+// Positions are in CSS pixels from the canvas center: needs a pixel-matched camera (`camera: { useDomSize: true }`)
 export default class Tracker extends Group {
     #props
     #store
 
     #tracker
-    #observer
+    #intersectionObserver
+    #resizeObserver
     #stickyTrigger
     #stickyConfig
     #stickyStart
@@ -51,7 +54,8 @@ export default class Tracker extends Group {
         this.#props = props
         this.#store = requireStore(props.store, new.target.name)
         this.#tracker = undefined
-        this.#observer = undefined
+        this.#intersectionObserver = undefined
+        this.#resizeObserver = undefined
 
         this.#stickyTrigger = undefined
         this.#stickyConfig = null
@@ -60,7 +64,7 @@ export default class Tracker extends Group {
 
         this.el = undefined
 
-        this.trackPosition = { x: 0, y: 0 }
+        this.trackPosition = { x: 0, y: 0, z: 0 }
         this.trackSize = { w: 0, h: 0 }
         this.rect = { width: 0, height: 0, left: 0, top: 0 }
         this.offset = { x: 0, y: 0 }
@@ -68,8 +72,8 @@ export default class Tracker extends Group {
         this.preventUpdatePosition = props.preventUpdatePosition ?? false
         this.preventUpdateScale = props.preventUpdateScale ?? true
 
-        this.sticky = props.sticky ?? false
         this.isActive = false
+        this.stickyProgress = 0
 
         this.#init()
     }
@@ -77,16 +81,15 @@ export default class Tracker extends Group {
     #normalizeSticky(sticky) {
         if (!sticky) return null
 
-        const config = typeof sticky === 'string' ? { container: sticky } : { ...sticky }
-        const { top, start, container, end } = config
+        const config = typeof sticky === 'string' ? { container: sticky } : sticky
+        const { start, container, end } = config
 
         if (!container) { throw new Error('Tracker sticky config requires a container selector') }
 
         return {
-            ...STICKY_DEFAULTS,
             container,
-            end,
-            start: start ?? (top != null ? `top top+=${top}` : STICKY_DEFAULTS.start),
+            start: start ?? STICKY_DEFAULTS.start,
+            end: end ?? STICKY_DEFAULTS.end,
         }
     }
 
@@ -97,11 +100,11 @@ export default class Tracker extends Group {
         this.#tracker = t
         this.el = this.#tracker
 
-        this.#stickyConfig = this.#normalizeSticky(this.sticky)
+        this.#stickyConfig = this.#normalizeSticky(this.#props.sticky)
         if (this.#stickyConfig) { this.#initSticky() }
 
         this.#resize()
-        this.#initIntersectionObserver()
+        this.#initObservers()
     }
 
     #initSticky() {
@@ -111,7 +114,6 @@ export default class Tracker extends Group {
         if (!triggerEl) { throw new Error(`Sticky container not found for selector: ${container}`) }
 
         this.#stickyTrigger = triggerEl
-        setTimeout(() => this.#resize(), 500)
     }
 
     #resolvePosition(position) {
@@ -125,50 +127,46 @@ export default class Tracker extends Group {
         const { scroll, height: viewportHeight } = this.#store.viewport
         const scrollY = scroll.y
 
-        const startPos = this.#resolvePosition(start)
-        const endPos = this.#resolvePosition(end)
-
-        this.#stickyStart = scrollAtPosition(this.#stickyTrigger, startPos, scrollY, viewportHeight)
-        this.#stickyEnd = scrollAtPosition(this.#stickyTrigger, endPos, scrollY, viewportHeight)
+        this.#stickyStart = scrollAtPosition(this.#stickyTrigger, this.#resolvePosition(start), scrollY, viewportHeight)
+        this.#stickyEnd = scrollAtPosition(this.#stickyTrigger, this.#resolvePosition(end), scrollY, viewportHeight)
     }
 
-    #getStickyProgress(scrollY) {
-        const range = this.#stickyEnd - this.#stickyStart
-        return clamp(0, 1, (scrollY - this.#stickyStart) / range)
+    // Scroll distance travelled inside the sticky range, cancelled out so the group stays pinned
+    #updateSticky(scrollY) {
+        const range = Math.max(0, this.#stickyEnd - this.#stickyStart)
+        const travelled = clamp(0, range, scrollY - this.#stickyStart)
+
+        // a zero range has no in-between: it's either before or past the pin
+        this.stickyProgress = range ? travelled / range : Number(scrollY >= this.#stickyStart)
+
+        return travelled
     }
 
-    #getStickyCorrection(scrollY) {
-        const progress = this.#getStickyProgress(scrollY)
-        const range = this.#stickyEnd - this.#stickyStart
+    #initObservers() {
+        // While pinned the group leaves its element behind, so visibility follows the container instead
+        const visibilityTarget = this.#stickyTrigger ?? this.#tracker
 
-        return progress * range
-    }
+        this.#intersectionObserver = new IntersectionObserver(([entry]) => {
+            this.isActive = !!entry && entry.isIntersecting
+        }, { threshold: 0 })
+        this.#intersectionObserver.observe(visibilityTarget)
 
-    #initIntersectionObserver() {
-        const options = { threshold: 0 }
-
-        this.#observer = new IntersectionObserver((entries) => {
-            const entry = entries[0]
-            const isVisible = !!entry && entry.isIntersecting && entry.intersectionRatio > 0
-            this.isActive = isVisible
-        }, options)
-
-        this.#observer.observe(this.#tracker)
+        // Catches late layout changes (fonts, images) without a window resize. Calls the public
+        // resize() so subclasses refresh too; the first callback fires on observe, after construction
+        this.#resizeObserver = new ResizeObserver(() => this.resize())
+        this.#resizeObserver.observe(this.#tracker)
+        if (this.#stickyTrigger) { this.#resizeObserver.observe(this.#stickyTrigger) }
     }
 
     #setPosition() {
         const { width, height, scroll } = this.#store.viewport
         const scrollY = scroll.y
 
+        let y = (height - this.rect.height) * 0.5 - this.rect.top + scrollY - this.offset.y
+        if (this.#stickyTrigger) { y -= this.#updateSticky(scrollY) }
+
         this.trackPosition.x = this.rect.left - (width * 0.5) + (this.rect.width * 0.5)
-        let y = -(this.rect.height * 0.5) + (height * 0.5) - this.rect.top + scrollY - this.offset.y
-
-        if (this.#stickyTrigger) {
-            y -= this.#getStickyCorrection(scrollY)
-        }
-
         this.trackPosition.y = y
-        this.trackPosition.z = 0
 
         if (this.preventUpdatePosition) return
         this.position.set(this.trackPosition.x, this.trackPosition.y, 0)
@@ -181,30 +179,28 @@ export default class Tracker extends Group {
         this.rect.left = left
         this.rect.top = top
 
-        this.trackSize = { w: width, h: height }
+        this.trackSize.w = width
+        this.trackSize.h = height
         this.offset.y = this.#store.viewport.scroll.y
 
-        if (!this.preventUpdateScale) { this.scale.set(this.trackSize.w, this.trackSize.h, 1) }
+        if (!this.preventUpdateScale) { this.scale.set(width, height, 1) }
 
         this.#refreshStickyBounds()
-        this.#update()
-    }
-
-    #update() {
         this.#setPosition()
     }
 
     #destroy() {
         this.#stickyTrigger = undefined
 
-        if (this.#observer) {
-            this.#observer.disconnect()
-            this.#observer = undefined
-        }
+        this.#intersectionObserver?.disconnect()
+        this.#intersectionObserver = undefined
+
+        this.#resizeObserver?.disconnect()
+        this.#resizeObserver = undefined
     }
 
     update() {
-        this.#update()
+        this.#setPosition()
     }
 
     resize() {

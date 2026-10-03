@@ -474,7 +474,7 @@ const box = new Tracker({
     tracker: '.hero', // selector or element
     preventUpdateScale: false, // default true; false scales the group to the element size
     preventUpdatePosition: false, // true: only compute trackPosition, don't move the group
-    sticky: false // or '.container', or { container, start, end, top }
+    sticky: false // or '.container', or { container, start, end }
 })
 app.scene.add(box)
 shepherd.add(box)
@@ -482,7 +482,28 @@ shepherd.add(box)
 
 Useful properties: `el`, `trackPosition`, `trackSize` (`{ w, h }`), `rect`, `isActive` (element is in view, from an `IntersectionObserver`).
 
-`sticky` keeps the group pinned while scrolling through a container, with GSAP-style positions: `start: 'top top'`, `end: 'bottom bottom'`, `top: 100` (shortcut for `start: 'top top+=100'`).
+`sticky` keeps the group pinned while scrolling through a container, with GSAP-style positions: `start: 'top top'`, `end: 'bottom bottom'` (offsets like `'top top+=100'` or `'top center-=10%'`). While pinned, `isActive` follows the container. `stickyProgress` goes from `0` (before `start`) to `1` (at `end`). The tracked element must not be CSS `position: sticky` itself.
+
+`start` and `end` each take a position string **or** a function that returns one. A function runs again on every resize, so the position can follow the current layout, e.g. a box that scales with the page width:
+
+```js
+const box = document.querySelector('.box')
+
+new Tracker({
+    store: app.store,
+    tracker: box,
+    sticky: {
+        container: '.section',
+        start: 'top top', // string
+        start: () => `top center-=${box.getBoundingClientRect().height}`, // or function:
+      
+        end: 'bottom bottom', // string
+        end: () => `bottom center+=${box.getBoundingClientRect().height}`, // or function
+    },
+})
+```
+
+Pick one form per key: in a real object the second `start`/`end` replaces the first. Read sizes inside the function, not outside it, so they're fresh on each resize. Prefer `getBoundingClientRect()` over `offsetHeight`, which rounds to whole pixels.
 
 #### PlaneBackground
 
