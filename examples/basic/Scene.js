@@ -1,37 +1,58 @@
 import { Group } from 'three'
 import { Shepherd } from 'keemera'
-import { PlaneBackground } from 'keemera/shards'
 
-// The old Scene pattern, now user-land: a Group with its own Shepherd that forwards update/resize/destroy.
-// Tracker planes need the camera created with { useDomSize: true } so 1 unit = 1 css pixel.
+import HeroPlate from './HeroPlate'
+import Panel from './Panel'
+import { ease } from './ink'
+
+// data-keemera="<type>" -> class
+const TYPES = {
+    hero: HeroPlate,
+    panel: Panel,
+}
+
 export default class Scene extends Group {
-    #store
     #shepherd
+    #store
+    #lastScroll = null
 
-    constructor({ store }) {
+    constructor({ store, texture }) {
         super()
 
         this.#store = store
         this.#shepherd = new Shepherd()
+        this.byType = {}
 
-        this.#init()
+        document.querySelectorAll('[data-keemera]').forEach((el) => {
+            const type = el.dataset.keemera
+            const Type = TYPES[type]
+            if (!Type) {
+                console.warn(`[keemera] unknown data-keemera type: "${type}"`)
+                return
+            }
+
+            const object = new Type({ store, tracker: el, texture })
+            this.#shepherd.add(object)
+            this.add(object)
+            this.byType[type] ??= []
+            this.byType[type].push(object)
+        })
     }
 
-    #init() {
-        document.querySelectorAll('[data-track]').forEach((el, i) => {
-            const plane = new PlaneBackground({ store: this.#store, tracker: el, preventUpdateScale: false })
-            plane.material.color.setHSL(0.55 + i * 0.12, 0.6, 0.5)
+    get hero() {
+        return this.byType.hero?.[0]
+    }
 
-            this.#shepherd.add(plane)
-            this.add(plane)
-        })
+    #updateVelocity({ scroll, delta }) {
+        const velocity = this.#store.uniforms.scrollVelocity
+        const raw = this.#lastScroll === null ? 0 : scroll - this.#lastScroll
+        this.#lastScroll = scroll
+        velocity.value = ease(velocity.value, Math.min(Math.max(raw / 60, -1), 1), delta, 8)
     }
 
     update(state) {
+        this.#updateVelocity(state)
         this.#shepherd.update(state)
-        this.children.forEach((child, i) => {
-            child.rotation.z = Math.sin(state.elapsed + i) * 0.03
-        })
     }
 
     resize(state) {

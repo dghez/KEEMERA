@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+
+@source './**/*.{html,js}';
+
+@theme {
+    --font-fell: 'IM Fell English', serif;
+    --font-fell-sc: 'IM Fell English SC', serif;
+    --font-serif: 'EB Garamond', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --color-paper: #f2f0ea;
+    --color-ink: #1c1b18;
+    --color-rubric: #a3392a;
+    --color-muted: #5a574f;
+    --color-body: #3d3b35;
+    --color-faint: #8a867b;
+    --color-rule: #c9c5ba;
+}
+
+html,
+body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+html.lenis,
+html.lenis body {
+    height: auto;
+}
+
+a {
+    color: var(--color-ink);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+a:hover {
+    color: var(--color-rubric);
+}
+
+::selection {
+    background: var(--color-ink);
+    color: var(--color-paper);
+}
+
+/* IM Fell has no IPA glyphs: those (ˈ ː ə ɛ) fall back to EB Garamond, letters stay in Fell */
+.title-ipa {
+    font-family: 'IM Fell English', 'EB Garamond', serif;
+}
+
+/* two words in one spot, each seen through an ink-grain filter (svg in index.html) */
+.ink-swap {
+    display: inline-grid;
+}
+
+.ink-swap > span {
+    grid-area: 1 / 1;
+    filter: url(#ink-a);
+}
+
+.ink-swap > span + span {
+    filter: url(#ink-b);
+}
+
+/* plate number above each heading */
+.eyebrow {
+    @apply font-fell-sc text-[17px] tracking-[0.18em] text-rubric;
+}
+
+.fig-caption {
+    @apply flex flex-wrap justify-between gap-x-4 gap-y-1 font-fell text-[16px] italic text-muted;
+}
+
+/* engraved frame around each tracked plate */
+.plate-frame {
+    border: 4px double var(--color-ink);
+    padding: 8px;
+}
+
+/* bestiary entries beside the plates */
+.bestiary {
+    @apply flex max-w-[38ch] flex-col gap-4 text-body;
+}
+
+.bestiary p {
+    @apply m-0 text-pretty;
+}
+
+.bestiary-name {
+    @apply m-0 font-fell text-[clamp(32px,3.4vw,50px)] font-normal leading-[0.98] text-ink;
+}
+
+.bestiary-latin {
+    @apply font-fell text-[20px] italic text-muted;
+}
+
+.bestiary-marks {
+    @apply m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 border-t border-ink pt-4 text-[17px];
+}
+
+.bestiary-marks dt {
+    @apply font-fell-sc text-[15px] tracking-[0.12em] text-rubric;
+}
+
+.bestiary-marks dd {
+    @apply m-0;
+}
+
+.btn-source {
+    @apply flex items-center bg-ink px-6 py-[13px] font-fell-sc text-[18px] tracking-[0.08em] text-paper no-underline;
+}
+
+.btn-source:hover {
+    background: var(--color-rubric);
+    color: var(--color-paper);
+}

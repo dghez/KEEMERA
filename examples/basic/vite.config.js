@@ -1,9 +1,15 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 
-const src = resolve(import.meta.dirname, '../../src')
+const root = import.meta.dirname
+const src = resolve(root, '../../src')
 
 export default defineConfig({
+    root,
+    // shared by every example, served from /
+    publicDir: resolve(root, '../assets'),
+    plugins: [tailwindcss()],
     resolve: {
         alias: [
             { find: /^keemera$/, replacement: resolve(src, 'index.js') },
