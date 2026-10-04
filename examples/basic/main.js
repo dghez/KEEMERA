@@ -7,15 +7,21 @@ import Scene from './Scene'
 import Post from './Post'
 import { ease } from './ink'
 
+/* ───────── Options: ?debug, ?nosmear ───────── */
+
 const params = new URLSearchParams(window.location.search)
 const debug = params.has('debug')
 const smear = !params.has('nosmear')
+
+/* ───────── Smooth scroll ───────── */
 
 const lenis = new Lenis({
     lerp: 0.12,
     wheelMultiplier: 1.1,
     autoResize: false,
 })
+
+/* ───────── App: renderer, camera, preloaded plates ───────── */
 
 const wrapper = document.querySelector('[data-keemera-canvas]')
 const app = new Keemera({
@@ -35,11 +41,14 @@ const app = new Keemera({
     ],
 })
 
+// Lenis drives the app's scroll, and re-measures first on every resize
 lenis.on('scroll', ({ scroll }) => app.setScroll(scroll))
 app.setScroll(lenis.scroll)
 app.events.on(EVENTS.APP_RESIZE, () => lenis.resize(), PRIORITY.first)
 
 await app.ready
+
+/* ───────── Scene: shared uniforms, tracked plates, lifecycle ───────── */
 
 // shared uniforms: velocity is written by Scene, lens radius (css px) by the hero
 app.store.uniforms.scrollVelocity = { value: 0 }
@@ -50,6 +59,7 @@ const scene = new Scene({ store: app.store, texture: app.resources.get('plate') 
 app.scene.add(scene)
 shepherd.add(scene)
 
+// ink smear while scrolling; replaces the default render
 const post = new Post({ store: app.store, smear })
 app.setRenderFunction(post.render)
 
@@ -61,13 +71,17 @@ app.resize()
 // web fonts shift the layout, so trackers measure again once they're in
 document.fonts.ready.then(() => app.resize())
 
-// intro: the plate is engraved line by line
+/* ───────── Intro ───────── */
+
+// the plate is engraved line by line
 if (scene.hero) gsap.to(scene.hero.intro, { value: 1, duration: 3.2, ease: 'power1.inOut', delay: 0.2 })
 
-// title: name -> pronunciation -> name, on loop. The word breaks into rubric ink grain and bleeds away,
+/* ───────── Title: name ↔ pronunciation ───────── */
+
+// name -> pronunciation -> name, on loop. The word breaks into rubric ink grain and bleeds away,
 // then, once it's gone, the next gathers out of the grain and settles to solid ink
 const swap = document.querySelector('[data-ink-swap]')
-if (swap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+if (swap) {
     const [name, ipa] = swap.children
     const grain = id => ({
         threshold: document.querySelector(`#${id} feFuncA`),
@@ -100,7 +114,8 @@ if (swap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     dissolve(tl, ipa, name)
 }
 
-// live store readout
+/* ───────── HUD: live store readout and scroll meter ───────── */
+
 const hud = Object.fromEntries([...document.querySelectorAll('[data-hud]')].map(el => [el.dataset.hud, el]))
 const meter = document.querySelector('[data-scroll-meter]')
 const sign = n => (n < 0 ? '−' : '+') + Math.abs(n).toFixed(2)
@@ -127,11 +142,15 @@ app.events.on(EVENTS.APP_TICK, ({ delta, frame, scroll, width, height }) => {
     if (meter) meter.textContent = String(Math.round((scroll / scrollRange) * 100)).padStart(3, '0')
 })
 
+/* ───────── Loop: Lenis first, then Keemera, on the gsap ticker ───────── */
+
 gsap.ticker.add((time) => {
     lenis.raf(time * 1000)
     app.tick()
 })
 gsap.ticker.lagSmoothing(0)
+
+/* ───────── Debug ───────── */
 
 if (debug) {
     console.log('events', app.events.getEvents())
