@@ -19,7 +19,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 ## Contents
 
 1. [Getting started](#getting-started): install, quick start, exports, multiple instances
-2. [The app](#the-app): options, instance API, frame order, loop, camera, scroll, gestures
+2. [The app](#the-app): options, instance API, frame order, loop, custom render, camera, scroll, gestures
 3. [Data and lifecycle](#data-and-lifecycle): store, events, Shepherd, resources
 4. [Building blocks](#building-blocks): shards, helpers, shaders
 5. [Development](#development)
@@ -119,6 +119,7 @@ new Keemera({
     showHelpers: false, // store.showHelpers, a flag for your own helpers
     autoRun: true, // add tick to gsap.ticker; false -> call app.tick() yourself
     autoResize: true, // ResizeObserver on wrapper; false -> call app.resize() yourself
+    autoRender: true, // renderer.render(scene, camera) each tick; false -> nothing is rendered unless you set a render function
     gestures: true, // internal @use-gesture; false -> emit the mouse events yourself
     gestureTarget: window,
     dpr: [1, 1.6], // pixel ratio clamp [min, max]
@@ -163,6 +164,8 @@ new Keemera({
 | `play()` / `pause()`          | Add or remove `tick` from `gsap.ticker`                                                     |
 | `resize()`                    | Re-read the wrapper size                                                                    |
 | `setScroll(y)`                | Feed the scroll position (e.g. from Lenis)                                                  |
+| `setRenderFunction(fn)`       | Replace the default render with `fn(state, store)`; `null` restores it (see [Custom render](#custom-render)) |
+| `autoRender`                  | Get or set the `autoRender` option at runtime                                               |
 | `destroy()`                   | Stops the loop, emits `APP_DESTROY`, disposes resources and renderer, removes all listeners |
 
 ### Frame order
@@ -172,7 +175,7 @@ Each `tick()`:
 1. `time`, `mouse` and `camera` update
 2. `EVENTS.APP_TICK` is emitted with the frame state
 3. `EVENTS.WEBGL_BEFORE_RENDER`
-4. `renderer.render(scene, camera)`
+4. Render: your render function if set, otherwise `renderer.render(scene, camera)` (when `autoRender` is on)
 5. `EVENTS.WEBGL_AFTER_RENDER`
 
 The frame state passed to these events and to `APP_RESIZE`:
@@ -195,6 +198,25 @@ await app.ready
 
 gsap.ticker.add(app.tick) // or your own requestAnimationFrame
 ```
+
+### Custom render
+
+To take over the render step (postprocessing, render targets, multiple passes), pass a function to `setRenderFunction`. It runs every tick, between `WEBGL_BEFORE_RENDER` and `WEBGL_AFTER_RENDER`, and receives the frame state and the store:
+
+```js
+app.setRenderFunction((state, { gl, scene, camera }) => {
+    gl.setRenderTarget(target)
+    gl.render(scene, camera)
+    gl.setRenderTarget(null)
+    gl.render(postQuad, postCamera)
+})
+
+app.setRenderFunction(null) // back to the default render
+```
+
+While a render function is set, the default render is always skipped, so frames are never rendered twice. Use `APP_RESIZE` to resize your render targets and `APP_DESTROY` to dispose them. `examples/basic/Post.js` is a working example.
+
+With `autoRender: false` and no render function, nothing is rendered. This is useful when you render by hand, for example from `WEBGL_AFTER_RENDER`.
 
 ### Camera
 

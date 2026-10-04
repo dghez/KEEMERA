@@ -18,6 +18,7 @@ export default class Keemera {
     #resizeObserver
     #isPlaying
     #isDestroyed
+    #renderFunction = null
 
     constructor(options = {}) {
         const {
@@ -27,6 +28,7 @@ export default class Keemera {
             showHelpers = false,
             autoRun = true,
             autoResize = true,
+            autoRender = true,
             resources: resourcesOptions = {},
         } = options
 
@@ -34,7 +36,7 @@ export default class Keemera {
             throw new Error('[Keemera] new Keemera({ wrapper, canvas }) requires both a wrapper element and a canvas')
         }
 
-        this.#options = { ...options, autoRun, autoResize }
+        this.#options = { ...options, autoRun, autoResize, autoRender }
         this.#isPlaying = false
         this.#isDestroyed = false
         this.#frameState = { delta: 0, elapsed: 0, frame: 0, width: 0, height: 0, dpr: 1, scroll: 0, mouse: undefined }
@@ -63,6 +65,8 @@ export default class Keemera {
     get time() { return this.store.time }
     get state() { return this.store.state }
     get isPlaying() { return this.#isPlaying }
+    get autoRender() { return this.#options.autoRender }
+    set autoRender(value) { this.#options.autoRender = !!value }
 
     async #init() {
         const { store } = this
@@ -126,9 +130,24 @@ export default class Keemera {
         const state = this.#syncFrameState()
 
         events.emit(EVENTS.APP_TICK, state)
-        events.emit(EVENTS.WEBGL_BEFORE_RENDER, state)
-        this.#core.render()
-        events.emit(EVENTS.WEBGL_AFTER_RENDER, state)
+        events.emit(EVENTS.WEBGL_BEFORE_RENDER, state, this.store)
+        this.#render(state)
+        events.emit(EVENTS.WEBGL_AFTER_RENDER, state, this.store)
+    }
+
+    #render(state) {
+        // A custom render function always replaces the default one to avoid double renders
+        if (this.#renderFunction) {
+            this.#renderFunction(state, this.store)
+            return
+        }
+
+        if (this.#options.autoRender) { this.#core.render() }
+    }
+
+    setRenderFunction(fn) {
+        this.#renderFunction = fn
+        return this
     }
 
     play() {
