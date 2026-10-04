@@ -51,6 +51,7 @@ app.scene.add(scene)
 shepherd.add(scene)
 
 const post = new Post({ store: app.store, smear })
+app.setRenderFunction(post.render)
 
 app.events.on(EVENTS.APP_TICK, state => shepherd.update(state))
 app.events.on(EVENTS.APP_RESIZE, state => shepherd.resize(state))

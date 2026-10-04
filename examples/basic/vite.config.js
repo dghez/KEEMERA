@@ -10,6 +10,7 @@ export default defineConfig({
     // shared by every example, served from /
     publicDir: resolve(root, '../assets'),
     plugins: [tailwindcss()],
+    server: { port: Number(process.env.PORT) || 5173 },
     resolve: {
         alias: [
             { find: /^keemera$/, replacement: resolve(src, 'index.js') },
