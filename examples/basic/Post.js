@@ -1,6 +1,5 @@
 import { LinearSRGBColorSpace } from 'three'
 import { EffectComposer, RenderPass, EffectPass, Effect, EffectAttribute } from 'postprocessing'
-import { EVENTS } from 'keemera'
 
 import { INK } from './ink'
 
@@ -41,14 +40,12 @@ class InkSmearEffect extends Effect {
 
 // Ink smear while scrolling, built on postprocessing's EffectComposer.
 // While the page is still the effect is invisible, so the composer is skipped and the scene draws straight to the canvas.
+// render(), resize() and destroy() are wired to the app in main.js.
 export default class Post {
-    #store
     #composer
-    #offs = []
 
     constructor({ store, smear = true }) {
         const { gl, scene, camera, uniforms } = store
-        this.#store = store
         this.smear = { value: smear ? 1 : 0 }
 
         // the page's shaders write raw sRGB with no conversion anywhere; keep postprocessing from encoding again
@@ -57,18 +54,9 @@ export default class Post {
         this.#composer = new EffectComposer(gl)
         this.#composer.addPass(new RenderPass(scene, camera))
         this.#composer.addPass(new EffectPass(camera, new InkSmearEffect({ velocity: uniforms.scrollVelocity, smear: this.smear })))
-
-        const { events } = store
-        this.#offs.push(
-            events.on(EVENTS.APP_RESIZE, this.#resize),
-            events.on(EVENTS.APP_DESTROY, () => this.destroy()),
-        )
-
-        this.#resize()
     }
 
-    #resize = () => {
-        const { width, height } = this.#store.viewport
+    resize({ width, height }) {
         this.#composer.setSize(width, height, false)
     }
 
@@ -86,8 +74,6 @@ export default class Post {
     }
 
     destroy() {
-        this.#offs.forEach(off => off())
-        this.#offs = []
         this.#composer.dispose()
     }
 }

@@ -63,9 +63,16 @@ shepherd.add(scene)
 const post = new Post({ store: app.store, smear })
 app.setRenderFunction(post.render)
 
+// lifecycle: the app's events drive the scene and the post pass
 app.events.on(EVENTS.APP_TICK, state => shepherd.update(state))
-app.events.on(EVENTS.APP_RESIZE, state => shepherd.resize(state))
-app.events.on(EVENTS.APP_DESTROY, () => shepherd.destroy())
+app.events.on(EVENTS.APP_RESIZE, (state) => {
+    shepherd.resize(state)
+    post.resize(state)
+})
+app.events.on(EVENTS.APP_DESTROY, () => {
+    shepherd.destroy()
+    post.destroy()
+})
 app.resize()
 
 // web fonts shift the layout, so trackers measure again once they're in
