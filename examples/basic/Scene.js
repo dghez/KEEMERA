@@ -1,5 +1,5 @@
 import { Group } from 'three'
-import { Shepherd } from 'keemera'
+import { Shepherd } from '@dghez/keemera'
 
 import HeroPlate from './HeroPlate'
 import Panel from './Panel'

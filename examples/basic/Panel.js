@@ -1,7 +1,7 @@
 import { Mesh, ShaderMaterial, PlaneGeometry, Vector2 } from 'three'
 import { gsap } from 'gsap'
-import { Tracker } from 'keemera/shards'
-import { noise3d } from 'keemera/shaders'
+import { Tracker } from '@dghez/keemera/shards'
+import { noise3d } from '@dghez/keemera/shaders'
 
 import { INK, localMouse, ease } from './ink'
 

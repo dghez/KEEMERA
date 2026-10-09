@@ -1,11 +1,11 @@
 ---
 name: add-shard
-description: Add a new shard (reusable Three.js building block) to keemera/shards. Use when creating a new class in src/shards, e.g. a tracked mesh, mask, overlay, fitted model or any object meant to be exported from 'keemera/shards'.
+description: Add a new shard (reusable Three.js building block) to @dghez/keemera/shards. Use when creating a new class in src/shards, e.g. a tracked mesh, mask, overlay, fitted model or any object meant to be exported from '@dghez/keemera/shards'.
 ---
 
 # Add a shard
 
-A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exported from `keemera/shards`.
+A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exported from `@dghez/keemera/shards`.
 
 ## Checklist
 
@@ -17,7 +17,7 @@ A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exp
    Extra named exports (like `FullscreenQuad`'s shaders) get a prefixed alias.
 3. Document it in `README.md`:
    - add a `#### <Name>` section under **Building blocks → Shards**: one-paragraph description, options with defaults, a short code example, useful properties
-   - mention it in the `keemera/shards` import line under **Exports** if it's a common one
+   - mention it in the `@dghez/keemera/shards` import line under **Exports** if it's a common one
 4. If the public usage is non-obvious, update `skills/keemera/SKILL.md` (consumer skill).
 5. Try it in `examples/basic` (it imports from `src/` via aliases), then run `npm run lint` and `npm run build`.
 

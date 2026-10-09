@@ -25,7 +25,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 ### Install
 
 ```bash
-npm i keemera three gsap
+npm i @dghez/keemera three gsap
 ```
 
 `three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
@@ -33,7 +33,7 @@ npm i keemera three gsap
 ### Quick start
 
 ```js
-import Keemera, { EVENTS } from 'keemera'
+import Keemera, { EVENTS } from '@dghez/keemera'
 
 const app = new Keemera({
     wrapper: document.querySelector('.gl'),
@@ -60,21 +60,21 @@ import Keemera, {
     GL_STATES,
     Emitter,
     Shepherd
-} from 'keemera'
+} from '@dghez/keemera'
 
-// keemera/shards (see Shards below)
-import { Tracker, PlaneBackground /* ... */ } from 'keemera/shards'
+// @dghez/keemera/shards (see Shards below)
+import { Tracker, PlaneBackground /* ... */ } from '@dghez/keemera/shards'
 
-// keemera/helpers
-import { getPlaneSize, uvCover } from 'keemera/helpers'
+// @dghez/keemera/helpers
+import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
 
-// keemera/shaders
-import { noise3d, curlNoise, map /* ... */ } from 'keemera/shaders'
+// @dghez/keemera/shaders
+import { noise3d, curlNoise, map /* ... */ } from '@dghez/keemera/shaders'
 ```
 
-| Export (`keemera`)    | Description                                                                     |
+| Export (`@dghez/keemera`)    | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
-| `default` / `Keemera` | The app class, as default or named export (`import { Keemera } from 'keemera'`) |
+| `default` / `Keemera` | The app class, as default or named export (`import { Keemera } from '@dghez/keemera'`) |
 | `EVENTS`              | Default event names (see [Events and priorities](#events-and-priorities))       |
 | `PRIORITY`            | Default listener priorities                                                     |
 | `GL_STATES`           | App states: `IDLE`, `LOADING`, `LOADED`, `READY`, `DESTROYED`                   |
@@ -336,7 +336,7 @@ Default priorities: `first: -10`, `instant: 0`, `high: 10`, `mid: 20`, `low: 30`
 `Emitter` is exported, so you can create a standalone one with the same API:
 
 ```js
-import { Emitter, EVENTS, PRIORITY } from 'keemera'
+import { Emitter, EVENTS, PRIORITY } from '@dghez/keemera'
 
 const bus = new Emitter({ labels: EVENTS, priorities: PRIORITY })
 ```
@@ -348,7 +348,7 @@ Subscribing to an event name that isn't registered always prints a warning, in d
 `Shepherd` is a small, self-contained lifecycle manager. The app doesn't own one: create as many as you need and wire them to the events yourself.
 
 ```js
-import { Shepherd } from 'keemera'
+import { Shepherd } from '@dghez/keemera'
 
 const shepherd = new Shepherd()
 shepherd.add(obj) // obj.update(state), obj.resize(state), obj.destroy() if defined
@@ -363,7 +363,7 @@ All hooks are optional. Shepherds nest, so a scene group can manage its own chil
 
 ```js
 import { Group } from 'three'
-import { Shepherd } from 'keemera'
+import { Shepherd } from '@dghez/keemera'
 
 class MyScene extends Group {
     #shepherd = new Shepherd()
@@ -472,10 +472,10 @@ Optional pieces you import as needed: ready-made objects, math helpers and GLSL 
 
 ### Shards
 
-Reusable building blocks, imported from `keemera/shards`:
+Reusable building blocks, imported from `@dghez/keemera/shards`:
 
 ```js
-import {Tracker, .....} from 'keemera/shards'
+import {Tracker, .....} from '@dghez/keemera/shards'
 ```
 
 Shards that need app data take a **required** `store` and throw if it's missing. All of them expose `update()`, `resize()` and/or `destroy()` where it makes sense, so you can hand them to a `Shepherd`.
@@ -596,7 +596,7 @@ app.events.on(EVENTS.APP_RESIZE, () => viewer.resize())
 ### Helpers
 
 ```js
-import { getPlaneSize, uvCover } from 'keemera/helpers'
+import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
 ```
 
 - `getPlaneSize(camera, distance)`: width and height visible by a perspective camera at a given distance.
@@ -607,7 +607,7 @@ import { getPlaneSize, uvCover } from 'keemera/helpers'
 GLSL snippets as JS strings, so no bundler plugin is needed. Each one is wrapped in an include guard, so including it twice is safe. `curlNoise` already contains `noise3d`.
 
 ```js
-import { map, .... } from 'keemera/shaders'
+import { map, .... } from '@dghez/keemera/shaders'
 
 const vertexShader = /* glsl */ `
     ${map}

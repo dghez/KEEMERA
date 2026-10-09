@@ -13,8 +13,8 @@ export default defineConfig({
     server: { port: Number(process.env.PORT) || 5173 },
     resolve: {
         alias: [
-            { find: /^keemera$/, replacement: resolve(src, 'index.js') },
-            { find: /^keemera\/(shards|helpers|shaders)$/, replacement: `${src}/$1/index.js` },
+            { find: /^@dghez\/keemera$/, replacement: resolve(src, 'index.js') },
+            { find: /^@dghez\/keemera\/(shards|helpers|shaders)$/, replacement: `${src}/$1/index.js` },
         ],
     },
 })

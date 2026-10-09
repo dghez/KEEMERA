@@ -1,8 +1,8 @@
 import { gsap } from 'gsap'
 import { Color } from 'three'
 import Lenis from 'lenis'
-import Keemera, { EVENTS, PRIORITY, Shepherd } from 'keemera'
-import { PlaneBackground } from 'keemera/shards'
+import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
+import { PlaneBackground } from '@dghez/keemera/shards'
 
 // Sticky Tracker test page: case A is compared against a CSS `position: sticky` twin every frame
 const lenis = new Lenis({
