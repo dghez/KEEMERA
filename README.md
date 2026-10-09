@@ -7,6 +7,9 @@ A self-contained **Three.js starter library** for WebGL experiences. Each `new K
 
 It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations and Lenis scroll.
 
+> [!TIP]
+> **Agent friendly.** The package ships an agent skill at `node_modules/keemera/skills/keemera/SKILL.md`, matching the version you installed. Point your coding agent at it from your `AGENTS.md` / `CLAUDE.md`, or copy it into `.claude/skills/` (see [AI agents](#ai-agents)).
+
 ## Contents
 
 1. [Getting started](#getting-started): install, quick start, exports, multiple instances
@@ -638,6 +641,22 @@ npm run lint
 ```
 
 Add `?debug` to the example URL to turn on debug logs.
+
+### AI agents
+
+Contributor guidance lives in [`AGENTS.md`](AGENTS.md), with recipes in `.claude/skills/`.
+
+The package ships a usage skill for apps built with keemera. Any agent that reads `AGENTS.md` (or `CLAUDE.md`) can pick it up with one line:
+
+```md
+When working with keemera, read node_modules/keemera/skills/keemera/SKILL.md first.
+```
+
+To use it as a Claude Code skill, copy it into your project (re-run after upgrading):
+
+```bash
+mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/skills/
+```
 
 ## License
 
