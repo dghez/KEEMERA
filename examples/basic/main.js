@@ -1,6 +1,6 @@
 import { gsap } from 'gsap'
 import Lenis from 'lenis'
-import Keemera, { EVENTS, PRIORITY, Shepherd } from 'keemera'
+import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
 
 import './style.css'
 import Scene from './Scene'

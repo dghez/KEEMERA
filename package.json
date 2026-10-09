@@ -1,5 +1,5 @@
 {
-    "name": "keemera",
+    "name": "@dghez/keemera",
     "version": "0.1.4",
     "description": "A self-contained, multi-instance Three.js starter library: renderer, camera, loop, events, viewport, resources and reusable shards.",
     "type": "module",
@@ -61,5 +61,8 @@
         "starter",
         "gsap"
     ],
-    "license": "MIT"
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    }
 }

@@ -15,15 +15,15 @@ A self-contained, multi-instance Three.js starter library. Each `new Keemera({ w
 
 ```
 src/
-  index.js          root barrel (keemera)
+  index.js          root barrel (@dghez/keemera)
   Keemera.js        app class: options, tick, resize, render function, destroy
   Core/             renderer setup, uniforms, Camera/ Gestures/ Mouse/ Time/ Viewport/
   events/           EVENTS, PRIORITY, createEmitter, Emitter.js
   store/            createStore(), GL_STATES
   resources/        asset loader; GLTFCurveExtension.js is vendored, don't edit it
-  shards/           one <Name>/index.js per shard + index.js barrel (keemera/shards)
-  helpers/          one <name>.js per helper + index.js barrel (keemera/helpers)
-  shaders/          one <name>.js per GLSL snippet + index.js barrel (keemera/shaders)
+  shards/           one <Name>/index.js per shard + index.js barrel (@dghez/keemera/shards)
+  helpers/          one <name>.js per helper + index.js barrel (@dghez/keemera/helpers)
+  shaders/          one <name>.js per GLSL snippet + index.js barrel (@dghez/keemera/shaders)
   utils/            Shepherd, dom (rect, qs, clamp), requireStore
 examples/basic/     dev playground (Lenis, Tracker, sticky, post-processing)
 examples/assets/    static files for the examples
@@ -37,10 +37,10 @@ Four entry points, kept in sync across:
 
 | Entry | Barrel | `vite.config.js` entry | README section |
 |---|---|---|---|
-| `keemera` | `src/index.js` | `index` | Getting started → Exports |
-| `keemera/shards` | `src/shards/index.js` | `shards/index` | Building blocks → Shards |
-| `keemera/helpers` | `src/helpers/index.js` | `helpers/index` | Building blocks → Helpers |
-| `keemera/shaders` | `src/shaders/index.js` | `shaders/index` | Building blocks → Shaders |
+| `@dghez/keemera` | `src/index.js` | `index` | Getting started → Exports |
+| `@dghez/keemera/shards` | `src/shards/index.js` | `shards/index` | Building blocks → Shards |
+| `@dghez/keemera/helpers` | `src/helpers/index.js` | `helpers/index` | Building blocks → Helpers |
+| `@dghez/keemera/shaders` | `src/shaders/index.js` | `shaders/index` | Building blocks → Shaders |
 
 Any public change updates the barrel **and** the README. A new entry point also needs `vite.config.js` and `package.json` `exports`. Keep barrel exports alphabetical.
 
@@ -48,7 +48,7 @@ Any public change updates the barrel **and** the README. A new entry point also 
 
 ```bash
 nvm use           # Node 20.19+ (.nvmrc)
-npm run dev       # examples/basic, aliases `keemera/*` to src/ (no build needed)
+npm run dev       # examples/basic, aliases `@dghez/keemera/*` to src/ (no build needed)
 npm run lint      # eslint src examples
 npm run build     # vite library build to dist/
 ```
@@ -77,8 +77,8 @@ There is no test runner. Verify changes with `npm run lint`, `npm run build`, an
 
 Recipes for common changes live in `.claude/skills/`:
 
-- `add-shard`: new building block in `keemera/shards`
-- `add-shader`: new GLSL snippet in `keemera/shaders`
-- `add-event-or-helper`: new default event or priority, or a helper in `keemera/helpers`
+- `add-shard`: new building block in `@dghez/keemera/shards`
+- `add-shader`: new GLSL snippet in `@dghez/keemera/shaders`
+- `add-event-or-helper`: new default event or priority, or a helper in `@dghez/keemera/helpers`
 
 `skills/keemera/SKILL.md` is for apps that **use** keemera and ships in the npm package. Update it when the public API changes.

@@ -1,11 +1,11 @@
 ---
 name: add-shader
-description: Add a GLSL snippet to keemera/shaders. Use when adding a reusable shader function (noise, blend mode, color adjustment, UV math, easing) to src/shaders.
+description: Add a GLSL snippet to @dghez/keemera/shaders. Use when adding a reusable shader function (noise, blend mode, color adjustment, UV math, easing) to src/shaders.
 ---
 
 # Add a shader snippet
 
-Snippets are GLSL strings exported from `keemera/shaders`. Users inline them in their own shaders with `${snippet}`, so they must be safe to include more than once.
+Snippets are GLSL strings exported from `@dghez/keemera/shaders`. Users inline them in their own shaders with `${snippet}`, so they must be safe to include more than once.
 
 ## Checklist
 

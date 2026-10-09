@@ -1,6 +1,6 @@
 ---
 name: keemera
-description: Build WebGL scenes with the keemera Three.js starter library. Use when code imports 'keemera', 'keemera/shards', 'keemera/helpers' or 'keemera/shaders', or when setting up a Keemera app, DOM-tracked meshes (Tracker, PlaneBackground, SectionMask), Lenis scroll sync, custom render/post-processing, resources loading or Shepherd lifecycle.
+description: Build WebGL scenes with the keemera Three.js starter library. Use when code imports '@dghez/keemera', '@dghez/keemera/shards', '@dghez/keemera/helpers' or '@dghez/keemera/shaders', or when setting up a Keemera app, DOM-tracked meshes (Tracker, PlaneBackground, SectionMask), Lenis scroll sync, custom render/post-processing, resources loading or Shepherd lifecycle.
 ---
 
 # Using keemera
@@ -14,7 +14,7 @@ npm i -E keemera three gsap   # pin exact: API may break before 1.0
 ```
 
 ```js
-import Keemera, { EVENTS, PRIORITY, Shepherd } from 'keemera'
+import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
 
 const app = new Keemera({
     wrapper: document.querySelector('.gl'),       // size source (required)
@@ -100,9 +100,9 @@ Types: `texture`, `gltf`, `fbo`, `envmap`, `gainmap`. `compress`, Draco, envmap,
 ## Building blocks
 
 ```js
-import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer } from 'keemera/shards'
-import { getPlaneSize, uvCover } from 'keemera/helpers'
-import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from 'keemera/shaders'
+import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer } from '@dghez/keemera/shards'
+import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
+import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keemera/shaders'
 ```
 
 - `Tracker({ store, tracker, preventUpdateScale, sticky })`: `Group` that follows a DOM element (needs `camera.useDomSize`). `sticky: { container, start: 'top top', end: 'bottom bottom' }` pins it; read `stickyProgress`, `isActive`, `trackSize`.

@@ -1,6 +1,6 @@
 ---
 name: add-event-or-helper
-description: Add a default event, a listener priority, or a math/texture helper to keemera. Use when changing EVENTS or PRIORITY in src/events, emitting a new app event, or adding a function to src/helpers (keemera/helpers).
+description: Add a default event, a listener priority, or a math/texture helper to keemera. Use when changing EVENTS or PRIORITY in src/events, emitting a new app event, or adding a function to src/helpers (@dghez/keemera/helpers).
 ---
 
 # Add an event, priority or helper
@@ -37,7 +37,7 @@ Add to the frozen `PRIORITY` object in `src/events/index.js` (lower runs first; 
    ```js
    export { default as <name> } from './<name>'
    ```
-3. Add a bullet to `README.md` under **Building blocks → Helpers** with the signature and what it returns or mutates, and add it to the `keemera/helpers` import line in **Exports** and in the Helpers code block.
+3. Add a bullet to `README.md` under **Building blocks → Helpers** with the signature and what it returns or mutates, and add it to the `@dghez/keemera/helpers` import line in **Exports** and in the Helpers code block.
 
 Reference: `src/helpers/uvCover.js`, `src/helpers/getPlaneSize.js`.
 
