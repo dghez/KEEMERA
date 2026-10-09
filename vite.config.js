@@ -23,8 +23,7 @@ export default defineConfig({
         rollupOptions: {
             external: isExternal,
             output: {
-                preserveModules: true,
-                preserveModulesRoot: 'src',
+                preserveModules: false,
                 entryFileNames: '[name].js',
             },
         },

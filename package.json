@@ -60,13 +60,5 @@
         "starter",
         "gsap"
     ],
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/dghez/KEEMERA.git"
-    },
-    "homepage": "https://github.com/dghez/KEEMERA#readme",
-    "bugs": {
-        "url": "https://github.com/dghez/KEEMERA/issues"
-    },
     "license": "MIT"
 }
