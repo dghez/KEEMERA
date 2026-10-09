@@ -1,16 +1,7 @@
 # KEEMERA
 
-> **Releasing a new version** (commit everything first, the working tree must be clean):
->
-> ```bash
-> npm run release 0.2.0   # or: patch | minor | major
-> ```
->
-> Updates `version` in `package.json`, commits, tags `v0.2.0` and pushes. Install it in a project with:
->
-> ```bash
-> npm i github:dghez/KEEMERA#v0.2.0 three gsap
-> ```
+> [!WARNING]
+> **Work in progress.** KEEMERA is under active development and not thoroughly tested yet. The API may change and breaking changes can land in any release until 1.0, so pin an exact version (`npm i -E keemera`) and check the changes before upgrading.
 
 A self-contained **Three.js starter library** for WebGL experiences. Each `new Keemera()` is an isolated app with its own renderer, camera, store, event system, viewport (size and scroll), resources and lifecycle manager, so you can run several on the same page.
 
@@ -31,7 +22,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 ### Install
 
 ```bash
-npm i github:dghez/KEEMERA#v0.1.0 three gsap
+npm i keemera three gsap
 ```
 
 `three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
