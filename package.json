@@ -5,7 +5,8 @@
     "type": "module",
     "sideEffects": false,
     "files": [
-        "dist"
+        "dist",
+        "skills"
     ],
     "main": "./dist/index.js",
     "module": "./dist/index.js",
