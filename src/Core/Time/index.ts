@@ -1,9 +1,18 @@
 import { Timer } from 'three'
 
-export default class Time {
-    #store
+import type { Store } from '../../types'
 
-    constructor({ store } = {}) {
+export default class Time {
+    #store: Store
+
+    timer: Timer
+    elapsed: number
+    delta: number
+    realDelta: number
+    scale: number
+    frames: number
+
+    constructor({ store }: { store: Store }) {
         this.#store = store
 
         this.timer = new Timer()

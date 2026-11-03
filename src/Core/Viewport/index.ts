@@ -1,10 +1,24 @@
 import { EVENTS } from '../../events'
+import type { Store } from '../../types'
+
+export interface ScrollState {
+    y: number
+    delta: number
+}
 
 export default class Viewport {
-    #store
-    #touchQuery
+    #store: Store
+    #touchQuery: MediaQueryList
 
-    constructor({ store, breakpoint = 650 } = {}) {
+    breakpoint: number
+    width: number
+    height: number
+    dpr: number
+    isMobile: boolean
+    isTouch: boolean
+    scroll: ScrollState
+
+    constructor({ store, breakpoint = 650 }: { store: Store, breakpoint?: number }) {
         this.#store = store
         this.breakpoint = breakpoint
 
@@ -20,7 +34,7 @@ export default class Viewport {
         this.isTouch = !this.#touchQuery.matches
     }
 
-    setSize(w, h, dpr = this.dpr) {
+    setSize(w: number, h: number, dpr = this.dpr) {
         this.width = w
         this.height = h
         this.dpr = dpr
@@ -31,7 +45,7 @@ export default class Viewport {
         this.#store.uniforms.resolution.value.set(w, h, dpr)
     }
 
-    setScroll(y) {
+    setScroll(y: number) {
         this.scroll.delta = y - this.scroll.y
         this.scroll.y = y
 

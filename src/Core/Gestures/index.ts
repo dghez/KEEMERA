@@ -1,12 +1,14 @@
 import { Gesture } from '@use-gesture/vanilla'
 
 import { EVENTS } from '../../events'
+import type { Store } from '../../types'
 
 export default class Gestures {
-    #store
-    #gesture
+    #store: Store
+    #gesture: Gesture | undefined
+    target: EventTarget
 
-    constructor({ store, target = window } = {}) {
+    constructor({ store, target = window }: { store: Store, target?: EventTarget }) {
         this.#store = store
         this.target = target
         this.#gesture = undefined
@@ -17,18 +19,18 @@ export default class Gestures {
     #init() {
         const { events, viewport } = this.#store
 
-        const onDrag = ({ xy, active, dragging }) => {
+        const onDrag = ({ xy, active, dragging }: { xy: [number, number], active: boolean, dragging?: boolean }) => {
             events.emit(EVENTS.APP_MOUSE_DRAG, { xy, active, dragging })
             events.emit(EVENTS.APP_MOUSE_HOLD, active)
         }
-        const onMove = ({ xy }) => {
+        const onMove = ({ xy }: { xy: [number, number] }) => {
             events.emit(EVENTS.APP_MOUSE_MOVE, { xy })
         }
         const dragConfig = viewport.isTouch
             ? { filterTaps: true, pointer: { buttons: [1, 2] } }
             : { filterTaps: false, pointer: { buttons: [1, 2] }, delay: 0 }
 
-        this.#gesture = new Gesture(this.target, { onDrag, onMove }, { drag: dragConfig })
+        this.#gesture = new Gesture(this.target as HTMLElement, { onDrag, onMove }, { drag: dragConfig })
     }
 
     destroy() {

@@ -1,9 +1,26 @@
 import { PerspectiveCamera } from 'three'
+import type { Vector3 } from 'three'
+
+import type { Store } from '../../types'
+
+type Vec3Tuple = [number, number, number]
+
+export interface CameraOptions {
+    fov?: number
+    aspect?: number
+    near?: number
+    far?: number
+    position?: Vec3Tuple
+    lookAt?: Vec3Tuple
+    useDomSize?: boolean
+}
 
 export default class Camera extends PerspectiveCamera {
-    #store
+    #store: Store
+    useDomSize: boolean
+    initialPosition: Vector3
 
-    constructor({ store, fov = 60, aspect = 1, near = 0.1, far = 300, position = [0, 0, 100], lookAt = [0, 0, 0], useDomSize = false } = {}) {
+    constructor({ store, fov = 60, aspect = 1, near = 0.1, far = 300, position = [0, 0, 100], lookAt = [0, 0, 0], useDomSize = false }: CameraOptions & { store: Store }) {
         super(fov, aspect, near, far)
         this.#store = store
 

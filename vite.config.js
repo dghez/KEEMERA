@@ -13,10 +13,10 @@ export default defineConfig({
         sourcemap: false,
         lib: {
             entry: {
-                index: resolve(root, 'src/index.js'),
-                'shards/index': resolve(root, 'src/shards/index.js'),
-                'helpers/index': resolve(root, 'src/helpers/index.js'),
-                'shaders/index': resolve(root, 'src/shaders/index.js'),
+                index: resolve(root, 'src/index.ts'),
+                'shards/index': resolve(root, 'src/shards/index.ts'),
+                'helpers/index': resolve(root, 'src/helpers/index.ts'),
+                'shaders/index': resolve(root, 'src/shaders/index.ts'),
             },
             formats: ['es'],
         },

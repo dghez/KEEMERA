@@ -1,10 +1,17 @@
 import { PlaneGeometry, MeshBasicMaterial, Mesh, AlwaysStencilFunc, ReplaceStencilOp, EqualStencilFunc } from 'three'
+import type { Material } from 'three'
+
+export interface StencilMeshProps {
+    stencilRef?: number
+}
 
 const PLANE = new PlaneGeometry()
 
 // Needs a renderer created with { renderer: { stencil: true } }
-export default class StencilMesh extends Mesh {
-    constructor(props = {}) {
+export default class StencilMesh extends Mesh<PlaneGeometry, MeshBasicMaterial> {
+    stencilRef: number
+
+    constructor(props: StencilMeshProps = {}) {
         const stencilRef = props.stencilRef ?? 1
 
         super(PLANE, new MeshBasicMaterial({
@@ -23,7 +30,7 @@ export default class StencilMesh extends Mesh {
         this.matrixAutoUpdate = false
     }
 
-    applyStencilToMaterial(material) {
+    applyStencilToMaterial(material: Material) {
         material.stencilWrite = true
         material.stencilRef = this.stencilRef
         material.stencilFunc = EqualStencilFunc
