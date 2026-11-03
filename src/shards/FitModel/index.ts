@@ -1,12 +1,25 @@
 import { Group, Box3, Vector3 } from 'three'
+import type { Object3D } from 'three'
+
+import type Tracker from '../Tracker'
+
+export interface FitModelProps {
+    model: Object3D
+    scaleFactor?: number
+    tracker?: Tracker
+}
 
 const V3 = new Vector3()
 
 export default class FitModel extends Group {
-    #tracker
-    #model
+    #tracker: Tracker | undefined
+    #model: Object3D
 
-    constructor({ model, scaleFactor = 1, tracker } = {}) {
+    scaleFactor: number
+    bounds: Vector3
+    scaleMultiplier: number
+
+    constructor({ model, scaleFactor = 1, tracker }: FitModelProps) {
         super()
 
         this.#tracker = tracker
@@ -25,12 +38,12 @@ export default class FitModel extends Group {
         box.getSize(this.bounds)
     }
 
-    fit(w, h) {
+    fit(w?: number, h?: number) {
         this.resize(w, h)
     }
 
-    resize(w, h) {
-        let width, height
+    resize(w?: number, h?: number) {
+        let width: number | undefined, height: number | undefined
 
         if (w && h) {
             width = w

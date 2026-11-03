@@ -9,8 +9,8 @@ Snippets are GLSL strings exported from `@dghez/keemera/shaders`. Users inline t
 
 ## Checklist
 
-1. Create `src/shaders/<name>.js` (camelCase, same as the export name) from the template below.
-2. Export it from `src/shaders/index.js`, keeping lines alphabetical:
+1. Create `src/shaders/<name>.ts` (camelCase, same as the export name) from the template below.
+2. Export it from `src/shaders/index.ts`, keeping lines alphabetical:
    ```js
    export { default as <name> } from './<name>'
    ```
@@ -18,7 +18,7 @@ Snippets are GLSL strings exported from `@dghez/keemera/shaders`. Users inline t
    ```
    - `<name>`: what it does, `vec3 <fn>(vec3 rgb, float amount)`.
    ```
-4. Run `npm run lint` and `npm run build`. If possible, try it in a material in `examples/basic` to make sure it compiles.
+4. Run `npm run typecheck`, `npm run lint` and `npm run build`. If possible, try it in a material in `examples/basic` to make sure it compiles.
 
 ## Rules
 
@@ -31,7 +31,7 @@ Snippets are GLSL strings exported from `@dghez/keemera/shaders`. Users inline t
 
 ## Template
 
-```js
+```ts
 const <name> = /* glsl */ `
 #ifndef KEEMERA_<NAME>
 #define KEEMERA_<NAME>
@@ -46,4 +46,4 @@ float <fn>(float value) {
 export default <name>
 ```
 
-Reference: `src/shaders/map.js` (simple), `src/shaders/curlNoise.js` (depends on another snippet).
+Reference: `src/shaders/map.ts` (simple), `src/shaders/curlNoise.ts` (depends on another snippet).

@@ -9,27 +9,28 @@ A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exp
 
 ## Checklist
 
-1. Create `src/shards/<Name>/index.js` with a default-exported class (template below).
-2. Export it from `src/shards/index.js`, keeping lines alphabetical:
-   ```js
+1. Create `src/shards/<Name>/index.ts` with a default-exported class and an exported `<Name>Props` interface (template below).
+2. Export it from `src/shards/index.ts`, keeping lines alphabetical, plus its types in the `export type` block:
+   ```ts
    export { default as <Name> } from './<Name>'
+   export type { <Name>Props } from './<Name>'
    ```
    Extra named exports (like `FullscreenQuad`'s shaders) get a prefixed alias.
 3. Document it in `README.md`:
    - add a `#### <Name>` section under **Building blocks → Shards**: one-paragraph description, options with defaults, a short code example, useful properties
    - mention it in the `@dghez/keemera/shards` import line under **Exports** if it's a common one
 4. If the public usage is non-obvious, update `skills/keemera/SKILL.md` (consumer skill).
-5. Try it in `examples/basic` (it imports from `src/` via aliases), then run `npm run lint` and `npm run build`.
+5. Try it in `examples/basic` (it imports from `src/` via aliases), then run `npm run typecheck`, `npm run lint` and `npm run build`.
 
 ## Rules
 
-- Props object constructor: `constructor(props = {})` or destructured `({ store, ... } = {})`.
+- Props object constructor typed with the exported interface: `constructor(props: <Name>Props)` or destructured `({ store, ... }: <Name>Props)`.
 - Needs app data (viewport, mouse, camera, uniforms, events)? Take `store` and validate it:
-  ```js
+  ```ts
   this.#store = requireStore(props.store, new.target.name)
   ```
   Never import anything global; everything comes from `store`.
-- Private state in `#fields`, setup in `#init()`.
+- Private state in typed `#fields`, public fields declared with their types, setup in `#init()`.
 - Implement only the hooks that make sense, so it works with `Shepherd`:
   - `update(state)`: per frame, `state` is the frame state (`delta, elapsed, frame, width, height, dpr, scroll, mouse`)
   - `resize(state)`: on `APP_RESIZE`
@@ -40,14 +41,23 @@ A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exp
 
 ## Template
 
-```js
+```ts
 import { Group } from 'three'
+import type { MeshBasicMaterial } from 'three'
+
 import requireStore from '../../utils/requireStore'
+import type { FrameState, Store } from '../../types'
+
+export interface <Name>Props {
+    store: Store
+}
 
 export default class <Name> extends Group {
-    #store
+    #store: Store
 
-    constructor(props = {}) {
+    material: MeshBasicMaterial | undefined
+
+    constructor(props: <Name>Props) {
         super()
         this.#store = requireStore(props.store, new.target.name)
 
@@ -60,10 +70,10 @@ export default class <Name> extends Group {
         // build meshes, read from this.#store
     }
 
-    update(state) {
+    update(state: FrameState) {
     }
 
-    resize(state) {
+    resize(state: FrameState) {
     }
 
     destroy() {
@@ -74,6 +84,6 @@ export default class <Name> extends Group {
 
 ## Reference implementations
 
-- `src/shards/PlaneBackground/index.js`: small subclass of `Tracker`, shared geometry
-- `src/shards/Tracker/index.js`: store usage, observers, sticky config, cleanup
-- `src/shards/FitModel/index.js`: no store, works standalone with `fit(w, h)`
+- `src/shards/PlaneBackground/index.ts`: small subclass of `Tracker`, shared geometry
+- `src/shards/Tracker/index.ts`: store usage, observers, sticky config, cleanup
+- `src/shards/FitModel/index.ts`: no store, works standalone with `fit(w, h)`

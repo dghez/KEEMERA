@@ -11,3 +11,5 @@ export default function createUniforms() {
         },
     }
 }
+
+export type Uniforms = ReturnType<typeof createUniforms>

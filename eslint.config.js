@@ -1,6 +1,7 @@
 import js from '@eslint/js'
 import stylistic from '@stylistic/eslint-plugin'
 import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default [
     {
@@ -37,8 +38,18 @@ export default [
             '@stylistic/space-infix-ops': 'error',
         },
     },
+    ...tseslint.configs.recommended.map(config => ({ ...config, files: ['src/**/*.ts'] })),
     {
-        files: ['vite.config.js', 'eslint.config.js', 'examples/*/vite.config.js'],
+        files: ['src/**/*.ts'],
+        rules: {
+            // TypeScript already reports undefined names and unused vars
+            'no-undef': 'off',
+            'no-unused-vars': 'off',
+            '@typescript-eslint/no-unused-vars': 'warn',
+        },
+    },
+    {
+        files: ['vite.config.js', 'eslint.config.js', 'examples/*/vite.config.js', 'scripts/**/*.js'],
         languageOptions: {
             globals: {
                 ...globals.node,

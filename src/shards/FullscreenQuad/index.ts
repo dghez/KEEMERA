@@ -1,4 +1,5 @@
 import { BufferGeometry, BufferAttribute, Mesh } from 'three'
+import type { Material } from 'three'
 
 const GEO = new BufferGeometry()
 const vertices = new Float32Array([
@@ -30,8 +31,8 @@ const fragmentShader = /* glsl */ `
 
 export { vertexShader, fragmentShader }
 
-export default class FullScreenQuad extends Mesh {
-    constructor(material) {
+export default class FullScreenQuad<M extends Material = Material> extends Mesh<BufferGeometry, M> {
+    constructor(material?: M) {
         super(GEO, material)
     }
 }

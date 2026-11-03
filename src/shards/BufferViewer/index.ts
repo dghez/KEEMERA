@@ -1,20 +1,41 @@
 import { Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Scene } from 'three'
+import type { Texture } from 'three'
 
 import requireStore from '../../utils/requireStore'
+import type { Store } from '../../types'
+
+export interface BufferViewerProps {
+    store: Store
+    width?: number
+    x?: number
+    y?: number
+}
+
+export interface BufferViewOptions {
+    width?: number
+    x?: number
+    y?: number
+    sourceWidth?: number
+    sourceHeight?: number
+}
+
+export interface BufferView extends Required<BufferViewOptions> {
+    mesh: Mesh<PlaneGeometry, MeshBasicMaterial>
+}
 
 const GEOMETRY = new PlaneGeometry(2, 2)
 
 // Draws on top of the main render: call render() on EVENTS.WEBGL_AFTER_RENDER
 export default class BufferViewer {
-    #store
-    #scene
-    #camera
-    #views
-    #width
-    #x
-    #y
+    #store: Store
+    #scene: Scene
+    #camera: OrthographicCamera
+    #views: BufferView[]
+    #width: number
+    #x: number
+    #y: number
 
-    constructor({ store, width = 300, x = 0, y = 0 } = {}) {
+    constructor({ store, width = 300, x = 0, y = 0 }: BufferViewerProps) {
         this.#store = requireStore(store, 'BufferViewer')
         this.#scene = new Scene()
         this.#camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
@@ -25,7 +46,7 @@ export default class BufferViewer {
         this.#y = y
     }
 
-    createView(texture, { width = this.#width, x = this.#x, y = this.#y, sourceWidth = 1, sourceHeight = 1 } = {}) {
+    createView(texture: Texture | null, { width = this.#width, x = this.#x, y = this.#y, sourceWidth = 1, sourceHeight = 1 }: BufferViewOptions = {}): BufferView {
         const material = new MeshBasicMaterial({
             map: texture,
             depthTest: false,
@@ -42,13 +63,13 @@ export default class BufferViewer {
         return view
     }
 
-    #syncViewSourceSize(view) {
+    #syncViewSourceSize(view: BufferView) {
         const map = view?.mesh?.material?.map
-        const img = map?.image
+        const img = map?.image as { width?: number, height?: number } | undefined
         const texW = img?.width
         const texH = img?.height
 
-        if (texW > 0 && texH > 0) {
+        if (texW && texH && texW > 0 && texH > 0) {
             view.sourceWidth = texW
             view.sourceHeight = texH
             return

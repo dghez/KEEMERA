@@ -1,10 +1,14 @@
 import { PlaneGeometry, MeshBasicMaterial, Mesh } from 'three'
 import Tracker from '../Tracker'
+import type { TrackerProps } from '../Tracker'
 
 const GEOMETRY = new PlaneGeometry()
 
 export default class PlaneBackground extends Tracker {
-    constructor(props = {}) {
+    material: MeshBasicMaterial | undefined
+    mesh: Mesh<PlaneGeometry, MeshBasicMaterial> | undefined
+
+    constructor(props: TrackerProps) {
         super(props)
 
         this.material = undefined

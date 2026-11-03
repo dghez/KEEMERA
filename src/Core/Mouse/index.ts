@@ -1,12 +1,23 @@
 import { Vector2, Vector3 } from 'three'
 
 import { EVENTS } from '../../events'
+import type { DragPayload } from '../../events'
+import type { Store } from '../../types'
 
 export default class Mouse {
-    #store
-    #unsubscribers
+    #store: Store
+    #unsubscribers: (() => void)[]
 
-    constructor({ store } = {}) {
+    static: Vector2
+    smooth: Vector2
+    smoother: Vector2
+    world: Vector3
+    viewport: Vector3
+    viewportSmooth: Vector3
+    isDragging: boolean
+    isHolding: boolean
+
+    constructor({ store }: { store: Store }) {
         this.#store = store
         this.#unsubscribers = []
 
@@ -29,7 +40,7 @@ export default class Mouse {
         this.#initEvents()
     }
 
-    #setPosition(x, y) {
+    #setPosition(x: number, y: number) {
         const { viewport } = this.#store
         if (!viewport?.width || !viewport?.height) return
 
@@ -40,12 +51,12 @@ export default class Mouse {
         this.static.y = -(y / viewport.height) * 2 + 1
     }
 
-    #onMouseMove = ({ xy }) => {
+    #onMouseMove = ({ xy }: { xy: [number, number] }) => {
         const [x, y] = xy
         this.#setPosition(x, y)
     }
 
-    #onDrag = ({ xy, active, dragging }) => {
+    #onDrag = ({ xy, active, dragging }: DragPayload) => {
         const [x, y] = xy
         this.#setPosition(x, y)
 
