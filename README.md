@@ -17,6 +17,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 3. [Data and lifecycle](#data-and-lifecycle): store, events, Shepherd, resources
 4. [Building blocks](#building-blocks): shards, helpers, shaders
 5. [Development](#development)
+6. [Changelog](#changelog)
 
 ---
 
@@ -689,6 +690,44 @@ To use it as a Claude Code skill, copy it into your project (re-run after upgrad
 ```bash
 mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/skills/
 ```
+
+## Changelog
+
+### 0.1.6 (2026-11-03)
+
+The library is now written in TypeScript. The runtime API is unchanged: JavaScript projects keep working as before.
+
+**New**
+
+- **Bundled type declarations** for every entry point (`@dghez/keemera`, `/shards`, `/helpers`, `/shaders`), wired through the `types` condition in `package.json` `exports`. They resolve with both `Bundler` and `NodeNext` module resolution.
+- **Typed events**: `on`, `once`, `off` and `emit` autocomplete the default event names and infer their payloads, e.g. `on(EVENTS.APP_TICK, state => …)` gives a `FrameState`. Custom event names are still accepted as plain strings.
+- **`KeemeraEventMap`**: extend it with `declare module '@dghez/keemera'` to type your own events (see [Events and priorities](#events-and-priorities)).
+- **Exported types**: `KeemeraOptions`, `Store`, `FrameState`, `RenderFunction`, `GlState`, `Asset`, `LoadedAsset`, `LoadedTexture`, `LoadedGLTF`, `ResourcesOptions`, `ResourceProgress`, `CameraOptions`, `ScrollState`, `Uniforms`, `Shepherdable`, plus the prop types of every shard (`TrackerProps`, `StickyConfig`, `FitModelProps`, `SectionMaskProps`, `StencilMeshProps`, `BufferViewerProps`, …).
+- **`Shepherd<State>`** is generic, so `update(state)` and `resize(state)` can be typed.
+- **`resources.get<T>(key)`** takes an optional type parameter, e.g. `resources.get<LoadedTexture>('plate')`.
+
+**Changed**
+
+- TypeScript users need `@types/three` installed (`npm i -D @types/three`).
+- Docs: `WEBGL_BEFORE_RENDER` and `WEBGL_AFTER_RENDER` are now documented with their actual payload, `(state, store)`.
+
+**Contributors**
+
+- Sources moved from `.js` to strict `.ts`. New `npm run typecheck` script; `npm run build` also writes `.d.ts` files to `dist/`.
+- ESLint runs `typescript-eslint` on `src`. The examples stay plain JavaScript.
+- `AGENTS.md` and the `.claude/skills` recipes describe the TypeScript conventions.
+
+### 0.1.5
+
+- Package renamed from `keemera` to `@dghez/keemera`.
+
+### 0.1.3
+
+- Added `AGENTS.md` for contributors and the `skills/keemera` usage skill, shipped in the npm package.
+
+### 0.1.1
+
+- First npm release: bundled entry points (`@dghez/keemera`, `/shards`, `/helpers`, `/shaders`).
 
 ## License
 
