@@ -52,6 +52,14 @@ app.events.once(EVENTS.WEBGL_APP_READY, fn)
 app.events.addEvents({ MY_EVENT: 'MY:EVENT' }) // register before subscribing, or you get a warning
 ```
 
+TypeScript: types ship with the package (install `@types/three`). Default event payloads are inferred; type custom ones by augmenting the map:
+
+```ts
+declare module '@dghez/keemera' {
+    interface KeemeraEventMap { 'MY:EVENT': [count: number] }
+}
+```
+
 Defaults: `APP_TICK`, `APP_RESIZE`, `APP_SCROLL`, `APP_MOUSE_MOVE`, `APP_MOUSE_DRAG`, `APP_MOUSE_HOLD`, `WEBGL_BEFORE_RENDER`, `WEBGL_AFTER_RENDER`, `WEBGL_APP_LOADING`, `WEBGL_APP_LOADED`, `WEBGL_APP_READY`, `WEBGL_STATE_CHANGE`, `RESOURCES_PROGRESS`, `APP_DESTROY`. Priorities: `first -10`, `instant 0`, `high 10`, `mid 20`, `low 30`.
 
 ## Scroll with Lenis
