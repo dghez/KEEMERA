@@ -1,9 +1,17 @@
-export default class Shepherd {
+export interface Shepherdable<S = unknown> {
+    update?(state: S): void
+    resize?(state: S): void
+    destroy?(): void
+}
+
+export default class Shepherd<S = unknown> {
+    components: Shepherdable<S>[]
+
     constructor() {
         this.components = []
     }
 
-    add(...components) {
+    add<T extends Shepherdable<S>>(...components: T[]): T {
         components.forEach((component) => {
             if (!component || this.components.includes(component)) return
             this.components.push(component)
@@ -12,21 +20,21 @@ export default class Shepherd {
         return components[0]
     }
 
-    remove(...components) {
+    remove(...components: Shepherdable<S>[]) {
         this.components = this.components.filter(el => !components.includes(el))
     }
 
-    has(component) {
+    has(component: Shepherdable<S>) {
         return this.components.includes(component)
     }
 
-    update(state) {
+    update(state: S) {
         for (let i = 0; i < this.components.length; i++) {
             this.components[i]?.update?.(state)
         }
     }
 
-    resize(state) {
+    resize(state: S) {
         for (let i = 0; i < this.components.length; i++) {
             this.components[i]?.resize?.(state)
         }

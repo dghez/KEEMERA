@@ -1,6 +1,7 @@
 import { RepeatWrapping } from 'three'
+import type { Texture } from 'three'
 
-export default function uvCover(map, sizes = [1, 1]) {
+export default function uvCover(map: Texture, sizes: [number, number] = [1, 1]) {
     const planeAspect = sizes[0] / sizes[1]
     const imageAspect = map.width / map.height
 

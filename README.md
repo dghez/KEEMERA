@@ -12,7 +12,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 
 ## Contents
 
-1. [Getting started](#getting-started): install, quick start, exports, multiple instances
+1. [Getting started](#getting-started): install, TypeScript, quick start, exports, multiple instances
 2. [The app](#the-app): options, instance API, frame order, loop, custom render, camera, scroll, gestures
 3. [Data and lifecycle](#data-and-lifecycle): store, events, Shepherd, resources
 4. [Building blocks](#building-blocks): shards, helpers, shaders
@@ -29,6 +29,24 @@ npm i @dghez/keemera three gsap
 ```
 
 `three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
+
+### TypeScript
+
+The library is written in TypeScript and ships its declarations; nothing to configure. Three.js has no bundled types, so install them too:
+
+```bash
+npm i -D @types/three
+```
+
+Public types (`KeemeraOptions`, `Store`, `FrameState`, `Asset`, `KeemeraEventMap`, shard props, …) are exported as types from each entry point:
+
+```ts
+import Keemera, { EVENTS } from '@dghez/keemera'
+import type { FrameState, Store } from '@dghez/keemera'
+import type { TrackerProps } from '@dghez/keemera/shards'
+```
+
+See [Events and priorities](#events-and-priorities) for typing your own events.
 
 ### Quick start
 
@@ -325,7 +343,7 @@ Default events:
 | `APP_MOUSE_MOVE`                                             | `{ xy: [x, y] }`                                                          |
 | `APP_MOUSE_DRAG`                                             | `{ xy: [x, y], active, dragging }`                                        |
 | `APP_MOUSE_HOLD`                                             | `active` (boolean)                                                        |
-| `WEBGL_BEFORE_RENDER` / `WEBGL_AFTER_RENDER`                 | frame state                                                               |
+| `WEBGL_BEFORE_RENDER` / `WEBGL_AFTER_RENDER`                 | frame state, store                                                        |
 | `WEBGL_APP_LOADING` / `WEBGL_APP_LOADED` / `WEBGL_APP_READY` | none                                                                      |
 | `WEBGL_STATE_CHANGE`                                         | `{ state, prev }`                                                         |
 | `RESOURCES_PROGRESS`                                         | `{ loaded, total, key, progress }`                                        |
@@ -342,6 +360,19 @@ const bus = new Emitter({ labels: EVENTS, priorities: PRIORITY })
 ```
 
 Subscribing to an event name that isn't registered always prints a warning, in development and production. Register custom names with `addEvents()` first.
+
+In TypeScript, `on`/`once`/`off`/`emit` autocomplete the default event names and infer their payloads (`on(EVENTS.APP_TICK, state => …)` gets a `FrameState`). Any other string is still accepted, with untyped arguments. To type your own events, extend `KeemeraEventMap`:
+
+```ts
+declare module '@dghez/keemera' {
+    interface KeemeraEventMap {
+        'MY:EVENT': [count: number]
+    }
+}
+
+app.events.addEvents({ MY_EVENT: 'MY:EVENT' })
+app.events.on('MY:EVENT', count => count.toFixed()) // count: number
+```
 
 ### Shepherd (lifecycle)
 
@@ -636,7 +667,8 @@ const vertexShader = /* glsl */ `
 nvm use          # Node 20.19+
 npm install
 npm run dev      # examples/basic playground (Lenis, Tracker, one instance)
-npm run build    # dist/ (ESM, minified, one file per module, no sourcemaps)
+npm run build    # dist/ (ESM, minified, one file per entry, no sourcemaps) + .d.ts
+npm run typecheck
 npm run lint
 ```
 

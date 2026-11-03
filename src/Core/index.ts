@@ -5,13 +5,14 @@ import Gestures from './Gestures'
 import Mouse from './Mouse'
 import Time from './Time'
 import Viewport from './Viewport'
+import type { KeemeraOptions, Store } from '../types'
 
 export default class Core {
-    #store
-    #options
-    #dom
+    #store: Store
+    #options: Partial<KeemeraOptions>
+    #dom: Store['dom']
 
-    constructor({ store, wrapper, canvas, options = {} }) {
+    constructor({ store, wrapper, canvas, options = {} }: { store: Store, wrapper: HTMLElement, canvas: HTMLCanvasElement, options?: Partial<KeemeraOptions> }) {
         this.#store = store
         this.#options = options
         this.#dom = { wrapper, canvas }

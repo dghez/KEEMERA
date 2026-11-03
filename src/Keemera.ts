@@ -6,21 +6,31 @@ import createStore, { GL_STATES } from './store'
 import createUniforms from './Core/uniforms'
 import Core from './Core'
 import Resources from './resources'
+import type Emitter from './events/Emitter'
+import type { FrameState, KeemeraOptions, RenderFunction, Store } from './types'
+
+type ResolvedOptions = KeemeraOptions & Required<Pick<KeemeraOptions, 'autoRun' | 'autoResize' | 'autoRender'>>
 
 export default class Keemera {
     static EVENTS = EVENTS
     static PRIORITY = PRIORITY
     static STATES = GL_STATES
 
-    #options
-    #core
-    #frameState
-    #resizeObserver
-    #isPlaying
-    #isDestroyed
-    #renderFunction = null
+    #options: ResolvedOptions
+    #core: Core
+    #frameState: FrameState
+    #resizeObserver: ResizeObserver | undefined
+    #isPlaying: boolean
+    #isDestroyed: boolean
+    #renderFunction: RenderFunction | null = null
 
-    constructor(options = {}) {
+    events: Emitter
+    store: Store
+    scene: Scene
+    resources: Resources
+    ready: Promise<this>
+
+    constructor(options: KeemeraOptions = {} as KeemeraOptions) {
         const {
             wrapper,
             canvas,
@@ -39,7 +49,7 @@ export default class Keemera {
         this.#options = { ...options, autoRun, autoResize, autoRender }
         this.#isPlaying = false
         this.#isDestroyed = false
-        this.#frameState = { delta: 0, elapsed: 0, frame: 0, width: 0, height: 0, dpr: 1, scroll: 0, mouse: undefined }
+        this.#frameState = { delta: 0, elapsed: 0, frame: 0, width: 0, height: 0, dpr: 1, scroll: 0, mouse: undefined as unknown as FrameState['mouse'] }
 
         const events = createEmitter()
         const store = createStore({ events, isDebug: debug, showHelpers })
@@ -66,7 +76,7 @@ export default class Keemera {
     get state() { return this.store.state }
     get isPlaying() { return this.#isPlaying }
     get autoRender() { return this.#options.autoRender }
-    set autoRender(value) { this.#options.autoRender = !!value }
+    set autoRender(value: boolean) { this.#options.autoRender = !!value }
 
     async #init() {
         const { store } = this
@@ -90,7 +100,7 @@ export default class Keemera {
         store.time.reset()
         this.resize()
 
-        await new Promise(res => setTimeout(res, 0))
+        await new Promise<void>(res => setTimeout(res, 0))
         if (this.#isDestroyed) return this
 
         store.setState(GL_STATES.READY)
@@ -135,7 +145,7 @@ export default class Keemera {
         events.emit(EVENTS.WEBGL_AFTER_RENDER, state, this.store)
     }
 
-    #render(state) {
+    #render(state: FrameState) {
         // A custom render function always replaces the default one to avoid double renders
         if (this.#renderFunction) {
             this.#renderFunction(state, this.store)
@@ -145,7 +155,7 @@ export default class Keemera {
         if (this.#options.autoRender) { this.#core.render() }
     }
 
-    setRenderFunction(fn) {
+    setRenderFunction(fn: RenderFunction | null) {
         this.#renderFunction = fn
         return this
     }
@@ -174,7 +184,7 @@ export default class Keemera {
         this.store.events.emit(EVENTS.APP_RESIZE, state)
     }
 
-    setScroll(y) {
+    setScroll(y: number) {
         this.store.viewport.setScroll(y)
     }
 

@@ -1,11 +1,22 @@
 import { REVISION, TextureLoader, EquirectangularReflectionMapping, SRGBColorSpace } from 'three'
+import type { DataTexture, Mesh, Texture, WebGLRenderer } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 
 import { EVENTS } from '../events'
 import { GLTFCurveExtension } from './GLTFCurveExtension.js'
+import type { Store, ResourceProgress } from '../types'
+
+// Local shape of @monogrid/gainmap-js (optional peer), so the emitted types don't depend on it
+interface GainmapLoader {
+    load(url: string, onLoad: (result: { renderTarget: { texture: Texture } }) => void, onProgress?: undefined, onError?: (err: unknown) => void): unknown
+    setRenderTargetOptions(options: { mapping?: number }): GainmapLoader
+    dispose?(): void
+}
+type HDRJPGLoader = new (renderer: WebGLRenderer) => GainmapLoader
 
 const CDN = `https://cdn.jsdelivr.net/npm/three@0.${REVISION}/examples/jsm/libs`
 
@@ -14,26 +25,77 @@ const DEFAULT_DECODERS = {
     ktx: `${CDN}/basis/`,
 }
 
-const SUPPORT_TYPES = ['ktx', 'draco', 'gainmap', 'envmap', 'curves']
+const SUPPORT_TYPES = ['ktx', 'draco', 'gainmap', 'envmap', 'curves'] as const
+
+export type SupportType = typeof SUPPORT_TYPES[number]
+export type SupportOptions = Partial<Record<SupportType, boolean>>
+export type AssetType = 'gltf' | 'texture' | 'envmap' | 'gainmap' | 'fbo'
+
+export interface Asset {
+    key: string
+    type: AssetType
+    path: string
+    colorSpace?: 'SRGBColorSpace' | (string & {})
+    flipY?: boolean
+    // textures only: load `<path>.ktx2`, or `-desktop.ktx2` / `-mobile.ktx2` when responsive
+    compress?: boolean | { responsive?: boolean }
+    preventInit?: boolean
+    [extra: string]: unknown
+}
+
+export interface FboData {
+    image: CanvasImageSource & { width: number, height: number }
+    ctx: CanvasRenderingContext2D
+    allData: Uint8ClampedArray
+    pickPixel: (x: number, y: number) => [number, number, number, number]
+}
+
+export type LoadedGLTF = GLTF & { config: Asset }
+export type LoadedTexture = Texture & { config: Asset }
+export type LoadedAsset = LoadedGLTF | LoadedTexture
+
+export interface ResourcesOptions {
+    support?: SupportOptions
+    decoders?: { draco?: string, ktx?: string }
+}
+
+export interface LoadOptions {
+    onProgress?: (progress: ResourceProgress) => void
+    save?: boolean
+}
+
+interface Loaders {
+    gltf: GLTFLoader
+    texture: TextureLoader
+    ktx: KTX2Loader | undefined
+    draco: DRACOLoader | undefined
+    envmap: HDRLoader | undefined
+    gainmap: { HDRJPGLoader: HDRJPGLoader, instance: GainmapLoader | undefined } | undefined
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyLoader = { load(url: string, onLoad: (data: any) => void, onProgress?: undefined, onError?: (err: unknown) => void): unknown }
 
 export default class Resources {
-    #store
-    #resources
-    #support
-    #decoders
-    #loaders
-    #pending
-    #responsiveType
-    #compileQueue
-    #isCompileQueueRunning
-    #isDisposed
+    #store: Store | undefined
+    #resources: Map<string, LoadedAsset>
+    #support: Record<SupportType, boolean>
+    #decoders: { draco: string, ktx: string }
+    #loaders: Loaders
+    #pending: Promise<unknown>[]
+    #responsiveType: string
+    #compileQueue: Texture[]
+    #isCompileQueueRunning: boolean
+    #isDisposed: boolean
 
-    constructor({ store, support = {}, decoders = {} } = {}) {
+    gl: WebGLRenderer | undefined
+
+    constructor({ store, support = {}, decoders = {} }: ResourcesOptions & { store?: Store } = {}) {
         this.#store = store
         this.gl = undefined // set by addContext, loaders that compile/upload need the same context
 
         this.#resources = new Map()
-        this.#support = Object.fromEntries(SUPPORT_TYPES.map(type => [type, false]))
+        this.#support = Object.fromEntries(SUPPORT_TYPES.map(type => [type, false])) as Record<SupportType, boolean>
         this.#decoders = { ...DEFAULT_DECODERS, ...decoders }
         this.#pending = []
         this.#compileQueue = []
@@ -61,23 +123,23 @@ export default class Resources {
         return { ...this.#support }
     }
 
-    get(key) {
-        return this.#resources.get(key)
+    get<T extends LoadedAsset = LoadedAsset>(key: string) {
+        return this.#resources.get(key) as T | undefined
     }
 
     getAll() {
         return this.#resources
     }
 
-    has(key) {
+    has(key: string) {
         return this.#resources.has(key)
     }
 
-    setResponsiveType(v) {
+    setResponsiveType(v: string) {
         this.#responsiveType = v
     }
 
-    addContext(renderer) {
+    addContext(renderer: WebGLRenderer) {
         this.gl = renderer
         this.#loaders.ktx?.detectSupport(renderer)
     }
@@ -86,10 +148,11 @@ export default class Resources {
      * Enable optional loaders: resources.addSupport({ ktx: true, draco: true, gainmap: true, envmap: true, curves: true })
      * Resolves once every requested loader is ready (gainmap is loaded lazily).
      */
-    addSupport(options = {}) {
-        const requested = []
+    addSupport(options: SupportOptions = {}) {
+        const requested: Promise<void>[] = []
 
-        Object.entries(options).forEach(([type, enabled]) => {
+        Object.entries(options).forEach(([name, enabled]) => {
+            const type = name as SupportType
             if (!SUPPORT_TYPES.includes(type)) {
                 console.warn(`[Keemera] Unknown resource support "${type}". Available: ${SUPPORT_TYPES.join(', ')}`)
                 return
@@ -108,7 +171,7 @@ export default class Resources {
         return Promise.all(requested)
     }
 
-    #enable(type) {
+    #enable(type: SupportType): Promise<void> | undefined {
         const loaders = this.#loaders
 
         if (type === 'draco') {
@@ -133,7 +196,7 @@ export default class Resources {
         else if (type === 'gainmap') {
             return import('@monogrid/gainmap-js')
                 .then(({ HDRJPGLoader }) => {
-                    loaders.gainmap = { HDRJPGLoader, instance: undefined }
+                    loaders.gainmap = { HDRJPGLoader: HDRJPGLoader as unknown as HDRJPGLoader, instance: undefined }
                 })
                 .catch((e) => {
                     this.#support.gainmap = false
@@ -142,14 +205,14 @@ export default class Resources {
         }
     }
 
-    #requireSupport(type, key) {
+    #requireSupport(type: SupportType, key: string) {
         if (!this.#support[type]) {
             throw new Error(`[Keemera] Asset "${key}" needs "${type}" support. Enable it with resources.addSupport({ ${type}: true }).`)
         }
     }
 
     #getGainmapLoader() {
-        const gainmap = this.#loaders.gainmap
+        const gainmap = this.#loaders.gainmap!
         if (!gainmap.instance) {
             if (!this.gl) throw new Error('[Keemera] gainmap assets need a renderer context')
             gainmap.instance = new gainmap.HDRJPGLoader(this.gl).setRenderTargetOptions({ mapping: EquirectangularReflectionMapping })
@@ -170,10 +233,11 @@ export default class Resources {
                 return
             }
 
-            const texture = this.#compileQueue.shift()
-            const isCompiled = !!this.gl.properties.get(texture).__webglTexture
+            const gl = this.gl!
+            const texture = this.#compileQueue.shift()!
+            const isCompiled = !!(gl.properties.get(texture) as { __webglTexture?: unknown }).__webglTexture
 
-            if (!isCompiled) { this.gl.initTexture(texture) }
+            if (!isCompiled) { gl.initTexture(texture) }
             if (typeof requestIdleCallback === 'function') {
                 requestIdleCallback(compile, { timeout })
             } else {
@@ -184,94 +248,97 @@ export default class Resources {
         compile()
     }
 
-    #addToCompileQueue(texture) {
+    #addToCompileQueue(texture: Texture) {
         this.#compileQueue.push(texture)
         this.#processCompileQueue()
     }
 
-    #applyTextureConfig(texture, el) {
-        texture.config = el
+    #applyTextureConfig(texture: Texture, el: Asset) {
+        const loaded = texture as LoadedTexture
+        loaded.config = el
         if (el.colorSpace === 'SRGBColorSpace') { texture.colorSpace = SRGBColorSpace }
-        if ('flipY' in el) { texture.flipY = el.flipY }
+        if ('flipY' in el) { texture.flipY = el.flipY as boolean }
+        return loaded
     }
 
-    #loadAsset(el) {
+    #loadAsset(el: Asset): Promise<LoadedAsset> {
         const { type, key } = el
         const loaders = this.#loaders
 
-        const fetch = (loader, path = el.path) => new Promise((res, rej) => {
+        const fetch = <T>(loader: AnyLoader, path = el.path) => new Promise<T>((res, rej) => {
             loader.load(path, res, undefined, (err) => {
-                rej(new Error(`[Keemera] Failed to load "${key}" (${path}): ${err?.message || err}`))
+                rej(new Error(`[Keemera] Failed to load "${key}" (${path}): ${(err as Error)?.message || err}`))
             })
         })
 
         if (type === 'gltf') {
-            return fetch(loaders.gltf).then((model) => {
-                model.config = el
-                return model
+            return fetch<GLTF>(loaders.gltf).then((model) => {
+                const loaded = model as LoadedGLTF
+                loaded.config = el
+                return loaded
             })
         }
 
         if (type === 'envmap') {
             this.#requireSupport('envmap', key)
-            return fetch(loaders.envmap).then((texture) => {
+            return fetch<DataTexture>(loaders.envmap!).then((texture) => {
                 texture.mapping = EquirectangularReflectionMapping
-                this.#applyTextureConfig(texture, el)
-                return texture
+                return this.#applyTextureConfig(texture, el)
             })
         }
 
         if (type === 'gainmap') {
             this.#requireSupport('gainmap', key)
-            return fetch(this.#getGainmapLoader()).then((result) => {
-                const texture = result.renderTarget.texture
+            return fetch<{ renderTarget: { texture: Texture } }>(this.#getGainmapLoader()).then((result) => {
+                const texture = result.renderTarget.texture as LoadedTexture
                 texture.config = el
                 return texture
             })
         }
 
         if (type === 'texture') {
-            let loader = loaders.texture
+            let loader: AnyLoader = loaders.texture
             let path = el.path
 
             if (el.compress) {
                 this.#requireSupport('ktx', key)
-                loader = loaders.ktx
-                const suffix = el.compress?.responsive
+                loader = loaders.ktx!
+                const suffix = typeof el.compress === 'object' && el.compress.responsive
                     ? (this.#responsiveType === 'desktop' ? '-desktop.ktx2' : '-mobile.ktx2')
                     : '.ktx2'
                 path = path.replace(/\.(png|jpe?g)$/, suffix)
             }
 
-            return fetch(loader, path).then((texture) => {
-                this.#applyTextureConfig(texture, el)
-                if (!el.preventInit && this.gl) { this.#addToCompileQueue(texture) }
-                return texture
+            return fetch<Texture>(loader, path).then((texture) => {
+                const loaded = this.#applyTextureConfig(texture, el)
+                if (!el.preventInit && this.gl) { this.#addToCompileQueue(loaded) }
+                return loaded
             })
         }
 
         if (type === 'fbo') {
-            return fetch(loaders.texture).then((texture) => {
+            return fetch<Texture>(loaders.texture).then((loaded) => {
+                const texture = loaded as LoadedTexture
                 texture.config = el
                 if (!el.preventInit && this.gl) { this.gl.initTexture(texture) }
 
-                const { image } = texture
+                const image = texture.image as FboData['image']
                 const imageW = image.width
                 const imageH = image.height
                 const off = document.createElement('canvas')
                 off.width = imageW
                 off.height = imageH
-                const ctx = off.getContext('2d')
+                const ctx = off.getContext('2d')!
                 ctx.drawImage(image, 0, 0)
 
                 const allData = ctx.getImageData(0, 0, imageW, imageH).data
 
-                const pickPixel = (x, y) => {
+                const pickPixel = (x: number, y: number): [number, number, number, number] => {
                     const i = (y * imageW + x) * 4
                     return [allData[i], allData[i + 1], allData[i + 2], allData[i + 3]]
                 }
 
-                texture.userData.fbo = { image, ctx, allData, pickPixel }
+                texture.userData.fbo = { image, ctx, allData, pickPixel } satisfies FboData
                 return texture
             })
         }
@@ -283,21 +350,21 @@ export default class Resources {
      * Load a list of assets: [{ key, type, path, ...config }]
      * Resolves with the loaded assets in the same order. Rejects if any asset fails.
      */
-    async load(assets = [], { onProgress, save = true } = {}) {
+    async load(assets: Asset[] = [], { onProgress, save = true }: LoadOptions = {}): Promise<LoadedAsset[]> {
         await Promise.all(this.#pending)
 
         const total = assets.length
         let loaded = 0
         const { events } = this.#store || {}
 
-        const onLoaded = (el, asset, isCached) => {
+        const onLoaded = (el: Asset, asset: LoadedAsset, isCached: boolean) => {
             if (save && !isCached) { this.#resources.set(el.key, asset) }
             loaded += 1
 
             const label = `${el.type}${el.compress ? '-ktx' : ''}`
             console.log(`LOADED:[${label}][${el.key}]${isCached ? ':CACHED' : ''}`)
 
-            const progress = { loaded, total, key: el.key, progress: total ? loaded / total : 1 }
+            const progress: ResourceProgress = { loaded, total, key: el.key, progress: total ? loaded / total : 1 }
             onProgress?.(progress)
             events?.emit(EVENTS.RESOURCES_PROGRESS, progress)
 
@@ -306,7 +373,7 @@ export default class Resources {
 
         return Promise.all(assets.map((el) => {
             if (this.#resources.has(el.key)) {
-                return Promise.resolve(onLoaded(el, this.#resources.get(el.key), true))
+                return Promise.resolve(onLoaded(el, this.#resources.get(el.key)!, true))
             }
 
             try {
@@ -317,20 +384,21 @@ export default class Resources {
         }))
     }
 
-    #disposeAsset(asset) {
+    #disposeAsset(asset: LoadedAsset) {
         if (!asset) return
 
-        if (asset.isTexture) {
+        if ('isTexture' in asset) {
             asset.dispose()
             return
         }
 
         asset.scene?.traverse?.((child) => {
-            child.geometry?.dispose?.()
-            const materials = Array.isArray(child.material) ? child.material : [child.material]
+            const { geometry, material } = child as Partial<Mesh>
+            geometry?.dispose?.()
+            const materials = Array.isArray(material) ? material : [material]
             materials.forEach((material) => {
                 if (!material) return
-                Object.values(material).forEach(value => value?.isTexture && value.dispose())
+                Object.values(material).forEach(value => (value as Texture)?.isTexture && (value as Texture).dispose())
                 material.dispose()
             })
         })

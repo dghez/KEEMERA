@@ -1,13 +1,20 @@
 import StencilMesh from '../StencilMesh'
 import Tracker from '../Tracker'
 import requireStore from '../../utils/requireStore'
+import type { StencilMeshProps } from '../StencilMesh'
+import type { TrackerProps } from '../Tracker'
+
+export interface SectionMaskProps extends StencilMeshProps {
+    store: TrackerProps['store']
+    tracker: TrackerProps['tracker']
+}
 
 // Needs a renderer created with { renderer: { stencil: true } }
 export default class SectionMask extends StencilMesh {
-    #props
-    #tracker
+    #props: SectionMaskProps
+    #tracker: Tracker
 
-    constructor(props = {}) {
+    constructor(props: SectionMaskProps) {
         super(props)
 
         this.#props = props

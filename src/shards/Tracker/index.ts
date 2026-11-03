@@ -2,19 +2,39 @@ import { Group } from 'three'
 
 import { rect, qs, clamp } from '../../utils/dom'
 import requireStore from '../../utils/requireStore'
+import type { Store } from '../../types'
+
+type Edge = 'top' | 'center' | 'bottom'
+
+// GSAP-like "<element edge> <viewport edge>" strings, e.g. 'top top', 'bottom center+=20%'
+export type StickyPosition = string | (() => string)
+
+export interface StickyConfig {
+    container: string
+    start?: StickyPosition
+    end?: StickyPosition
+}
+
+export interface TrackerProps {
+    store: Store
+    tracker: string | HTMLElement
+    sticky?: string | StickyConfig
+    preventUpdatePosition?: boolean
+    preventUpdateScale?: boolean
+}
 
 const STICKY_DEFAULTS = {
     start: 'top top',
     end: 'bottom bottom',
 }
 
-function getEdge(r, edge) {
+function getEdge(r: DOMRect, edge: string) {
     if (edge === 'center') return r.top + r.height * 0.5
-    if (edge === 'top' || edge === 'bottom') return r[edge]
+    if (edge === 'top' || edge === 'bottom') return r[edge as Edge & keyof DOMRect]
     throw new Error(`Invalid trigger edge: ${edge}`)
 }
 
-function parseViewportOffset(part, viewportHeight) {
+function parseViewportOffset(part: string, viewportHeight: number) {
     const m = part.match(/^(top|center|bottom)(([+-])=)?(\d*\.?\d+)?(%)?$/)
     if (!m) throw new Error(`Invalid scroll position: ${part}`)
 
@@ -30,7 +50,7 @@ function parseViewportOffset(part, viewportHeight) {
     return offset
 }
 
-function scrollAtPosition(el, position, scrollY, viewportHeight) {
+function scrollAtPosition(el: Element, position: string, scrollY: number, viewportHeight: number) {
     const [triggerPart, viewportPart] = position.trim().split(/\s+/)
     const r = el.getBoundingClientRect()
     return getEdge(r, triggerPart) + scrollY - parseViewportOffset(viewportPart, viewportHeight)
@@ -38,18 +58,28 @@ function scrollAtPosition(el, position, scrollY, viewportHeight) {
 
 // Positions are in CSS pixels from the canvas center: needs a pixel-matched camera (`camera: { useDomSize: true }`)
 export default class Tracker extends Group {
-    #props
-    #store
+    #props: TrackerProps
+    #store: Store
 
-    #tracker
-    #intersectionObserver
-    #resizeObserver
-    #stickyTrigger
-    #stickyConfig
-    #stickyStart
-    #stickyEnd
+    #tracker: HTMLElement | undefined
+    #intersectionObserver: IntersectionObserver | undefined
+    #resizeObserver: ResizeObserver | undefined
+    #stickyTrigger: HTMLElement | undefined
+    #stickyConfig: Required<StickyConfig> | null
+    #stickyStart: number
+    #stickyEnd: number
 
-    constructor(props = {}) {
+    el: HTMLElement | undefined
+    trackPosition: { x: number, y: number, z: number }
+    trackSize: { w: number, h: number }
+    rect: { width: number, height: number, left: number, top: number }
+    offset: { x: number, y: number }
+    preventUpdatePosition: boolean
+    preventUpdateScale: boolean
+    isActive: boolean
+    stickyProgress: number
+
+    constructor(props: TrackerProps) {
         super()
         this.#props = props
         this.#store = requireStore(props.store, new.target.name)
@@ -78,10 +108,10 @@ export default class Tracker extends Group {
         this.#init()
     }
 
-    #normalizeSticky(sticky) {
+    #normalizeSticky(sticky: TrackerProps['sticky']): Required<StickyConfig> | null {
         if (!sticky) return null
 
-        const config = typeof sticky === 'string' ? { container: sticky } : sticky
+        const config: StickyConfig = typeof sticky === 'string' ? { container: sticky } : sticky
         const { start, container, end } = config
 
         if (!container) { throw new Error('Tracker sticky config requires a container selector') }
@@ -108,7 +138,7 @@ export default class Tracker extends Group {
     }
 
     #initSticky() {
-        const { container } = this.#stickyConfig
+        const { container } = this.#stickyConfig!
         const triggerEl = qs(container)
 
         if (!triggerEl) { throw new Error(`Sticky container not found for selector: ${container}`) }
@@ -116,14 +146,14 @@ export default class Tracker extends Group {
         this.#stickyTrigger = triggerEl
     }
 
-    #resolvePosition(position) {
+    #resolvePosition(position: StickyPosition) {
         return typeof position === 'function' ? position() : position
     }
 
     #refreshStickyBounds() {
         if (!this.#stickyTrigger) return
 
-        const { start, end } = this.#stickyConfig
+        const { start, end } = this.#stickyConfig!
         const { scroll, height: viewportHeight } = this.#store.viewport
         const scrollY = scroll.y
 
@@ -132,7 +162,7 @@ export default class Tracker extends Group {
     }
 
     // Scroll distance travelled inside the sticky range, cancelled out so the group stays pinned
-    #updateSticky(scrollY) {
+    #updateSticky(scrollY: number) {
         const range = Math.max(0, this.#stickyEnd - this.#stickyStart)
         const travelled = clamp(0, range, scrollY - this.#stickyStart)
 
@@ -144,7 +174,7 @@ export default class Tracker extends Group {
 
     #initObservers() {
         // While pinned the group leaves its element behind, so visibility follows the container instead
-        const visibilityTarget = this.#stickyTrigger ?? this.#tracker
+        const visibilityTarget = this.#stickyTrigger ?? this.#tracker!
 
         this.#intersectionObserver = new IntersectionObserver(([entry]) => {
             this.isActive = !!entry && entry.isIntersecting
@@ -154,7 +184,7 @@ export default class Tracker extends Group {
         // Catches late layout changes (fonts, images) without a window resize. Calls the public
         // resize() so subclasses refresh too; the first callback fires on observe, after construction
         this.#resizeObserver = new ResizeObserver(() => this.resize())
-        this.#resizeObserver.observe(this.#tracker)
+        this.#resizeObserver.observe(this.#tracker!)
         if (this.#stickyTrigger) { this.#resizeObserver.observe(this.#stickyTrigger) }
     }
 
@@ -173,7 +203,7 @@ export default class Tracker extends Group {
     }
 
     #resize() {
-        const { width, height, left, top } = rect(this.#tracker)
+        const { width, height, left, top } = rect(this.#tracker!)
         this.rect.width = width
         this.rect.height = height
         this.rect.left = left
