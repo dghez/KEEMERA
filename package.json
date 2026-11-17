@@ -45,6 +45,7 @@
     "peerDependencies": {
         "@monogrid/gainmap-js": ">=3",
         "gsap": ">=3.12",
+        "postprocessing": ">=6.35",
         "three": ">=0.180"
     },
     "peerDependenciesMeta": {

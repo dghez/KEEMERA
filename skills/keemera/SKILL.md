@@ -108,7 +108,7 @@ Types: `texture`, `gltf`, `fbo`, `envmap`, `gainmap`. `compress`, Draco, envmap,
 ## Building blocks
 
 ```js
-import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer } from '@dghez/keemera/shards'
+import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer, MouseFluid } from '@dghez/keemera/shards'
 import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
 import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keemera/shaders'
 ```
@@ -118,6 +118,7 @@ import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keeme
 - `StencilMesh` / `SectionMask`: clip content with `mask.applyStencilToMaterial(material)`; need `renderer: { stencil: true }`.
 - `FitModel({ model, tracker, scaleFactor })`: scales a model to fit a tracker or `fit(w, h)`.
 - `FullscreenQuad(material)` with `fullscreenQuadVertexShader` / `fullscreenQuadFragmentShader`.
+- `MouseFluid({ store, resolution, blur, turbulence: { texture, strength }, debug })`: offscreen mouse fluid (turbulence is optional: a tileable noise texture, `fluid.turbulenceStrength` to tweak); share `fluid.uniform` (rg velocity, 0.5 = still; b strength; screen uv y-up) with your materials. Add it to a `Shepherd` so it updates on `APP_TICK`, before the render. `@dghez/keemera/shards` needs `postprocessing` installed.
 - Shaders are plain strings with include guards: inline with `${noise3d}` in your GLSL, duplicates are safe.
 
 Add shards to a `Shepherd` and to the scene (`app.scene.add(obj)`).

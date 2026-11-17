@@ -26,10 +26,10 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 ### Install
 
 ```bash
-npm i @dghez/keemera three gsap
+npm i @dghez/keemera three gsap postprocessing
 ```
 
-`three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
+`three` (r180 or later), `gsap` and `postprocessing` (6.35 or later) are peer dependencies. `postprocessing` is required by `@dghez/keemera/shards` (the `MouseFluid` blur): install it if you import anything from there. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
 
 ### TypeScript
 
@@ -82,7 +82,7 @@ import Keemera, {
 } from '@dghez/keemera'
 
 // @dghez/keemera/shards (see Shards below)
-import { Tracker, PlaneBackground /* ... */ } from '@dghez/keemera/shards'
+import { Tracker, PlaneBackground, MouseFluid /* ... */ } from '@dghez/keemera/shards'
 
 // @dghez/keemera/helpers
 import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
@@ -614,6 +614,42 @@ const quad = new FullscreenQuad(
 )
 ```
 
+#### MouseFluid
+
+A cheap mouse fluid simulation, rendered offscreen on low-res ping-pong targets: each frame the previous one is blurred and its velocity advects the next, while `store.mouse.smooth` paints new velocity. Output texture: `rg` = velocity (`0.5` = still), `b` = strength. The group itself is empty, so adding it to the scene is optional; it needs `update()` and `resize()` (hand it to a `Shepherd`). Needs `postprocessing` installed (blur via `GaussianBlurPass`).
+
+Options: `store` (required), `resolution` (default `0.125`, fraction of the viewport size), `blur: { kernelSize, iterations }` (default `71`, `2`), `turbulence: { texture, strength }` (off by default, see below), `debug` (default `store.isDebug`: draws the buffer in the bottom-right corner, black = still).
+
+**Turbulence** (optional): pass a tileable noise texture to break the trail into wisps. Its `rg` channels jitter the blurred read and push the advection, more where the fluid is strong. `strength` defaults to `1`; change it later with `fluid.turbulenceStrength`. The shard sets the texture to `RepeatWrapping` and `NoColorSpace` (it's data: an sRGB decode would make the trail drift). Without a texture the turbulence code isn't compiled.
+
+```js
+const fluid = new MouseFluid({
+    store: app.store,
+    turbulence: { texture: app.resources.get('turbulence'), strength: 1 },
+})
+```
+
+```js
+const fluid = new MouseFluid({ store: app.store })
+shepherd.add(fluid)
+
+// share the uniform: it always holds the current frame (screen uv, y up)
+const material = new ShaderMaterial({
+    uniforms: { uFluid: fluid.uniform, uResolution: app.store.uniforms.resolution },
+    fragmentShader: /* glsl */ `
+        uniform sampler2D uFluid;
+        uniform vec3 uResolution; // css width, css height, dpr
+        void main() {
+            vec2 screenUv = gl_FragCoord.xy / (uResolution.xy * uResolution.z);
+            vec2 velocity = (texture2D(uFluid, screenUv).rg - 0.5) * 2.0;
+            // ...
+        }
+    `,
+})
+```
+
+Useful properties: `uniform` (`{ value: Texture }`), `texture` (the current target), `turbulenceStrength` (get/set). With `gestures: false` the mouse doesn't move on its own: feed it with `app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [clientX, clientY] })`.
+
 #### BufferViewer (WIP)
 
 A debug overlay that draws textures (render targets, data textures) on screen. Options: `store` (required), `width` (default `300`), `x` and `y` (pixels from the bottom-left corner). It draws on top of the main render, so call it after rendering:
@@ -692,6 +728,16 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 ```
 
 ## Changelog
+
+### Unreleased
+
+**New**
+
+- **`MouseFluid` shard**: cheap mouse fluid simulation on low-res ping-pong targets, output as a shared texture uniform, with optional texture-driven turbulence (see [MouseFluid](#mousefluid)).
+
+**Changed**
+
+- `postprocessing` (>=6.35) is now a peer dependency, required by `@dghez/keemera/shards`.
 
 ### 0.1.6 (2026-11-03)
 
