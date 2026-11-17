@@ -19,6 +19,27 @@ export interface MouseFluidProps {
     debug?: boolean
 }
 
+// simulation tunables, live: change `.value`
+export interface MouseFluidSettings {
+    radius: IUniform<number> // max brush radius, uv
+    shapeVelocity: IUniform<number> // velocity painted by the brush
+    shapeStrength: IUniform<number> // strength (b) painted by the brush
+    paint: IUniform<number> // how fast the brush overrides the advected field
+    advection: IUniform<number> // how far the blurred velocity carries the field each frame, uv
+    velocityFade: IUniform<number> // velocity kept each frame
+    strengthFade: IUniform<number> // strength kept each frame
+    turbulenceStrength: IUniform<number>
+    turbulenceJitter: IUniform<number> // jitter of the blurred read, uv
+    turbulenceJitterScale: IUniform<number> // tiling of the jitter noise
+    turbulencePush: IUniform<number> // push on the advection, scaled by strength
+    turbulencePushScale: IUniform<number> // tiling of the push noise
+    turbulenceSpeed: IUniform<number> // how fast the noise scrolls, 0 = static
+    turbulenceCurlStep: IUniform<number> // finite difference step of the curl, noise uv: smaller = finer eddies
+}
+
+// runtime fields missing from postprocessing's typings
+type BlurPass = GaussianBlurPass & { blurMaterial: { kernelSize: number }, iterations: number }
+
 interface Targets {
     prev: WebGLRenderTarget
     curr: WebGLRenderTarget
@@ -35,12 +56,13 @@ const DEBUG_MARGIN = 16
  */
 export default class MouseFluid extends Group {
     uniform: IUniform<Texture | null> = { value: null }
+    settings: MouseFluidSettings
 
     #store: Store
     #resolution: number
     #debug: boolean
     #quad: FullscreenQuad<ShaderMaterial>
-    #blurPass: GaussianBlurPass
+    #blurPass: BlurPass
     #targets: Targets
     #prevMouse = new Vector2()
     #needsReset = true
@@ -74,7 +96,26 @@ export default class MouseFluid extends Group {
             blurred: new WebGLRenderTarget(1, 1, options),
         }
 
-        this.#blurPass = new GaussianBlurPass({ kernelSize, iterations })
+        this.#blurPass = new GaussianBlurPass({ kernelSize, iterations }) as BlurPass
+
+        this.settings = {
+            radius: { value: 0.035 },
+            shapeVelocity: { value: 16 },
+            shapeStrength: { value: 30 },
+            paint: { value: 100 },
+            advection: { value: 0.027 },
+            velocityFade: { value: 0.96 },
+            strengthFade: { value: 0.9 },
+            turbulenceStrength: { value: turbulence?.strength ?? 1 },
+            turbulenceJitter: { value: 0.02 },
+            turbulenceJitterScale: { value: 0.15 },
+            // the curl is small (~0.05 on a typical noise), hence the large factor
+            turbulencePush: { value: 1.5 },
+            turbulencePushScale: { value: 30 },
+            turbulenceSpeed: { value: 0.05 },
+            turbulenceCurlStep: { value: 0.01 },
+        }
+        const s = this.settings
 
         this.#quad = new FullscreenQuad(new ShaderMaterial({
             vertexShader,
@@ -87,8 +128,22 @@ export default class MouseFluid extends Group {
                 uNormalizedSpeed: { value: new Vector2() },
                 uResolution: this.#store.uniforms.resolution,
                 uReset: { value: false },
+                uRadius: s.radius,
+                uShapeVelocity: s.shapeVelocity,
+                uShapeStrength: s.shapeStrength,
+                uPaint: s.paint,
+                uAdvection: s.advection,
+                uVelocityFade: s.velocityFade,
+                uStrengthFade: s.strengthFade,
                 uTurbulence: { value: turbulence?.texture ?? null },
-                uTurbulenceStrength: { value: turbulence?.strength ?? 1 },
+                uTurbulenceStrength: s.turbulenceStrength,
+                uTurbulenceJitter: s.turbulenceJitter,
+                uTurbulenceJitterScale: s.turbulenceJitterScale,
+                uTurbulencePush: s.turbulencePush,
+                uTurbulencePushScale: s.turbulencePushScale,
+                uTurbulenceSpeed: s.turbulenceSpeed,
+                uTurbulenceCurlStep: s.turbulenceCurlStep,
+                uTime: this.#store.uniforms.time,
             },
             // compiled in only with a texture: no cost otherwise
             defines: turbulence ? { USE_TURBULENCE: '' } : {},
@@ -106,11 +161,38 @@ export default class MouseFluid extends Group {
 
     // no effect without a turbulence texture
     get turbulenceStrength(): number {
-        return this.#quad.material.uniforms.uTurbulenceStrength.value
+        return this.settings.turbulenceStrength.value
     }
 
     set turbulenceStrength(v: number) {
-        this.#quad.material.uniforms.uTurbulenceStrength.value = v
+        this.settings.turbulenceStrength.value = v
+    }
+
+    // fraction of the viewport size; resizing clears the fluid
+    get resolution(): number {
+        return this.#resolution
+    }
+
+    set resolution(v: number) {
+        this.#resolution = v
+        this.resize()
+    }
+
+    // odd, 3 to 1020
+    get blurKernelSize(): number {
+        return this.#blurPass.blurMaterial.kernelSize
+    }
+
+    set blurKernelSize(v: number) {
+        this.#blurPass.blurMaterial.kernelSize = v
+    }
+
+    get blurIterations(): number {
+        return this.#blurPass.iterations
+    }
+
+    set blurIterations(v: number) {
+        this.#blurPass.iterations = v
     }
 
     #init() {

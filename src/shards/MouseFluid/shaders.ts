@@ -18,9 +18,25 @@ export const fragmentShader = /* glsl */ `
   uniform vec3 uResolution;
   uniform bool uReset;
 
+  // settings, see MouseFluid.settings
+  uniform float uRadius;
+  uniform float uShapeVelocity;
+  uniform float uShapeStrength;
+  uniform float uPaint;
+  uniform float uAdvection;
+  uniform float uVelocityFade;
+  uniform float uStrengthFade;
+
   #ifdef USE_TURBULENCE
     uniform sampler2D uTurbulence;
     uniform float uTurbulenceStrength;
+    uniform float uTurbulenceJitter;
+    uniform float uTurbulenceJitterScale;
+    uniform float uTurbulencePush;
+    uniform float uTurbulencePushScale;
+    uniform float uTurbulenceSpeed;
+    uniform float uTurbulenceCurlStep;
+    uniform float uTime;
   #endif
 
   varying vec2 vUv;
@@ -35,9 +51,8 @@ export const fragmentShader = /* glsl */ `
     vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
 
     // RADIUS
-    float radSize = 0.035;
     float rad = pow(smoothstep(0.0, 0.2, length(uSpeed)), 0.85);
-    rad = clamp(rad, 0.0, radSize) * 2.0;
+    rad = clamp(rad, 0.0, uRadius) * 2.0;
 
     // MASKS
     float dist = distance(vUv * aspect, uMouse * aspect);
@@ -46,36 +61,47 @@ export const fragmentShader = /* glsl */ `
 
     // MOUSE SHAPE
     float baseStrength = length(uSpeed);
-    vec2 shapeVelocity = mix(vec2(0.0), uNormalizedSpeed * 16.0, m);
-    vec3 mouseShape = vec3(shapeVelocity * 0.5 + 0.5, saturate(baseStrength * m * 30.0));
+    vec2 shapeVelocity = mix(vec2(0.0), uNormalizedSpeed * uShapeVelocity, m);
+    vec3 mouseShape = vec3(shapeVelocity * 0.5 + 0.5, saturate(baseStrength * m * uShapeStrength));
 
     // BLURRED VELOCITY
     vec2 blurredUv = vUv;
     #ifdef USE_TURBULENCE
-      // jitter the blurred read, fine scale
-      blurredUv += (texture2D(uTurbulence, vUv * aspect * 90.0).rg - 0.5) * 0.02 * uTurbulenceStrength;
+      // jitter the blurred read, fine scale. difference of two far apart reads: zero mean whatever the
+      // texture brightness, a plain rg - 0.5 shifts everything diagonally when the noise isn't centered
+      vec2 juv = vUv * aspect * uTurbulenceJitterScale + uTime * uTurbulenceSpeed * vec2(0.13, 0.07);
+      vec2 jitter = texture2D(uTurbulence, juv).rg - texture2D(uTurbulence, juv + vec2(0.5, 0.37)).rg;
+      blurredUv += jitter * uTurbulenceJitter * uTurbulenceStrength;
     #endif
     vec4 blurred = texture2D(uBlurred, blurredUv);
     vec2 velocityInverse = (vec2(0.5) - blurred.rg) * 2.0;
-    vec2 direction = velocityInverse * 0.027;
+    vec2 direction = velocityInverse * uAdvection;
 
     #ifdef USE_TURBULENCE
       // push the advection around, more where the fluid is strong
-      vec2 turbulence = vec2(0.5) - texture2D(uTurbulence, vUv * aspect * 30.0).rg;
-      direction += turbulence * 0.065 * blurred.b * 1.4 * 1.3 * uTurbulenceStrength;
+      // curl of the noise: swirls rather than a drift, zero mean, scrolled over time so the eddies keep changing
+      vec2 tuv = vUv * aspect * uTurbulencePushScale - uTime * uTurbulenceSpeed * vec2(0.07, 0.11);
+      float e = uTurbulenceCurlStep;
+      float ny1 = texture2D(uTurbulence, tuv + vec2(0.0, e)).r;
+      float ny0 = texture2D(uTurbulence, tuv - vec2(0.0, e)).r;
+      float nx1 = texture2D(uTurbulence, tuv + vec2(e, 0.0)).r;
+      float nx0 = texture2D(uTurbulence, tuv - vec2(e, 0.0)).r;
+      vec2 curl = vec2(ny1 - ny0, nx0 - nx1);
+      direction += curl * uTurbulencePush * blurred.b * uTurbulenceStrength;
     #endif
 
     // ADVECTION
     vec4 advected = texture2D(uPrev, vUv + direction);
     advected.rg -= 0.5;
-    advected.rg *= 0.96;
+    advected.rg *= uVelocityFade;
     if (abs(advected.b) < 0.0001) advected.rg = vec2(0.0);
     advected.rg += 0.5;
-    advected.b *= 0.9;
+    advected.b *= uStrengthFade;
 
     // FINAL
-    vec3 color = mix(advected.rgb, mouseShape, saturate(baseStrength * sm * 100.0));
+    vec3 color = mix(advected.rgb, mouseShape, saturate(baseStrength * sm * uPaint));
 
     gl_FragColor = vec4(saturate(color), 1.0);
+
   }
 `

@@ -620,7 +620,7 @@ A cheap mouse fluid simulation, rendered offscreen on low-res ping-pong targets:
 
 Options: `store` (required), `resolution` (default `0.125`, fraction of the viewport size), `blur: { kernelSize, iterations }` (default `71`, `2`), `turbulence: { texture, strength }` (off by default, see below), `debug` (default `store.isDebug`: draws the buffer in the bottom-right corner, black = still).
 
-**Turbulence** (optional): pass a tileable noise texture to break the trail into wisps. Its `rg` channels jitter the blurred read and push the advection, more where the fluid is strong. `strength` defaults to `1`; change it later with `fluid.turbulenceStrength`. The shard sets the texture to `RepeatWrapping` and `NoColorSpace` (it's data: an sRGB decode would make the trail drift). Without a texture the turbulence code isn't compiled.
+**Turbulence** (optional): pass a tileable noise texture to break the trail into wisps. It jitters the blurred read and pushes the advection with the curl of the noise (swirls, more where the fluid is strong), scrolling over time. Both are zero mean, so the texture doesn't need to be centered on 0.5. `strength` defaults to `1`; change it later with `fluid.turbulenceStrength`. The shard sets the texture to `RepeatWrapping` and `NoColorSpace` (it's data: an sRGB decode would make the trail drift). Without a texture the turbulence code isn't compiled.
 
 ```js
 const fluid = new MouseFluid({
@@ -648,7 +648,7 @@ const material = new ShaderMaterial({
 })
 ```
 
-Useful properties: `uniform` (`{ value: Texture }`), `texture` (the current target), `turbulenceStrength` (get/set). With `gestures: false` the mouse doesn't move on its own: feed it with `app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [clientX, clientY] })`.
+Useful properties: `uniform` (`{ value: Texture }`), `texture` (the current target), `turbulenceStrength`, `resolution`, `blurKernelSize`, `blurIterations` (get/set, live), and `settings`: the simulation tunables as uniforms (`radius`, `shapeVelocity`, `shapeStrength`, `paint`, `advection`, `velocityFade`, `strengthFade`, `turbulenceJitter`, `turbulenceJitterScale`, `turbulencePush`, `turbulencePushScale`, `turbulenceSpeed`, `turbulenceCurlStep`…), change their `.value` live. The fluid example (`examples/basic/fluid.html?debug`) has a panel for all of them. With `gestures: false` the mouse doesn't move on its own: feed it with `app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [clientX, clientY] })`.
 
 #### BufferViewer (WIP)
 

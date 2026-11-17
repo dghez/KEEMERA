@@ -10,7 +10,7 @@ export { default as Tracker } from './Tracker'
 
 export type { BufferView, BufferViewerProps, BufferViewOptions } from './BufferViewer'
 export type { FitModelProps } from './FitModel'
-export type { MouseFluidProps } from './MouseFluid'
+export type { MouseFluidProps, MouseFluidSettings } from './MouseFluid'
 export type { SectionMaskProps } from './SectionMask'
 export type { StencilMeshProps } from './StencilMesh'
 export type { StickyConfig, StickyPosition, TrackerProps } from './Tracker'
