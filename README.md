@@ -754,7 +754,7 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 
 ## Changelog
 
-### Unreleased
+### 0.1.7 (2026-11-17)
 
 **New**
 
