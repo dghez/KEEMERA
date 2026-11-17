@@ -1,6 +1,7 @@
 import { gsap } from 'gsap'
 import Lenis from 'lenis'
 import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
+import { MouseFluid } from '@dghez/keemera/shards'
 
 import './style.css'
 import Scene from './Scene'
@@ -58,6 +59,10 @@ const shepherd = new Shepherd()
 const scene = new Scene({ store: app.store, texture: app.resources.get('plate') })
 app.scene.add(scene)
 shepherd.add(scene)
+
+// mouse fluid: offscreen only, share fluid.uniform with materials. ?debug shows its buffer bottom-right
+const fluid = new MouseFluid({ store: app.store })
+shepherd.add(fluid)
 
 // ink smear while scrolling; replaces the default render
 const post = new Post({ store: app.store, smear })

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>KEEMERA · fluid</title>
+        <style>
+            html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1b18; color: #f2f0ea; font: 15px/1.4 ui-monospace, monospace; }
+            .gl { position: fixed; inset: 0; }
+            .gl canvas { display: block; width: 100%; height: 100%; }
+            .label { position: fixed; left: 12px; bottom: 12px; pointer-events: none; }
+        </style>
+    </head>
+    <body>
+        <div class="gl" data-gl><canvas></canvas></div>
+        <p class="label">Move the mouse: MouseFluid distorts the scene in post. Add ?debug to see the fluid buffer.</p>
+
+        <script type="module" src="./fluid.js"></script>
+    </body>
+</html>

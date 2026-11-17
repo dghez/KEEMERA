@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 
 const root = import.meta.dirname
 
-const isExternal = id => /^(three|gsap|@use-gesture\/vanilla|@monogrid\/gainmap-js)(\/|$)/.test(id)
+const isExternal = id => /^(three|gsap|@use-gesture\/vanilla|@monogrid\/gainmap-js|postprocessing)(\/|$)/.test(id)
 
 export default defineConfig({
     build: {

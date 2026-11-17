@@ -17,6 +17,7 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 3. [Data and lifecycle](#data-and-lifecycle): store, events, Shepherd, resources
 4. [Building blocks](#building-blocks): shards, helpers, shaders
 5. [Development](#development)
+6. [Changelog](#changelog)
 
 ---
 
@@ -25,10 +26,10 @@ It runs on the **gsap ticker**, so rendering stays in sync with GSAP animations 
 ### Install
 
 ```bash
-npm i @dghez/keemera three gsap
+npm i @dghez/keemera three gsap postprocessing
 ```
 
-`three` (r180 or later) and `gsap` are peer dependencies. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
+`three` (r180 or later), `gsap` and `postprocessing` (6.35 or later) are peer dependencies. `postprocessing` is required by `@dghez/keemera/shards` (the `MouseFluid` blur): install it if you import anything from there. `@monogrid/gainmap-js` is only needed if you enable gainmap support.
 
 ### TypeScript
 
@@ -81,7 +82,7 @@ import Keemera, {
 } from '@dghez/keemera'
 
 // @dghez/keemera/shards (see Shards below)
-import { Tracker, PlaneBackground /* ... */ } from '@dghez/keemera/shards'
+import { Tracker, PlaneBackground, MouseFluid /* ... */ } from '@dghez/keemera/shards'
 
 // @dghez/keemera/helpers
 import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
@@ -613,6 +614,67 @@ const quad = new FullscreenQuad(
 )
 ```
 
+#### MouseFluid
+
+A cheap mouse fluid simulation, rendered offscreen on low-res ping-pong targets: each frame the previous one is blurred and its velocity advects the next, while `store.mouse.smooth` paints new velocity. Output texture: `rg` = velocity (`0.5` = still), `b` = strength. The group itself is empty, so adding it to the scene is optional; it needs `update()` and `resize()` (hand it to a `Shepherd`). Needs `postprocessing` installed (blur via `GaussianBlurPass`).
+
+Options: `store` (required), `resolution` (default `0.125`, fraction of the viewport size), `blur: { kernelSize, iterations }` (default `71`, `2`), `turbulence: { texture, strength }` (off by default, see below), `debug` (default `store.isDebug`: draws the buffer in the bottom-right corner, black = still).
+
+**Turbulence** (optional): pass a tileable noise texture to break the trail into wisps. It jitters the blurred read and pushes the advection with the curl of the noise (swirls, more where the fluid is strong), scrolling over time. Both are zero mean, so the texture doesn't need to be centered on 0.5. `strength` defaults to `1`; change it later with `fluid.turbulenceStrength`. The shard sets the texture to `RepeatWrapping` and `NoColorSpace` (it's data: an sRGB decode would make the trail drift). Without a texture the turbulence code isn't compiled.
+
+```js
+const fluid = new MouseFluid({
+    store: app.store,
+    turbulence: { texture: app.resources.get('turbulence'), strength: 1 },
+})
+```
+
+```js
+const fluid = new MouseFluid({ store: app.store })
+shepherd.add(fluid)
+
+// share the uniform: it always holds the current frame (screen uv, y up)
+const material = new ShaderMaterial({
+    uniforms: { uFluid: fluid.uniform, uResolution: app.store.uniforms.resolution },
+    fragmentShader: /* glsl */ `
+        uniform sampler2D uFluid;
+        uniform vec3 uResolution; // css width, css height, dpr
+        void main() {
+            vec2 screenUv = gl_FragCoord.xy / (uResolution.xy * uResolution.z);
+            vec2 velocity = (texture2D(uFluid, screenUv).rg - 0.5) * 2.0;
+            // ...
+        }
+    `,
+})
+```
+
+Useful properties: `uniform` (`{ value: Texture }`), `texture` (the current target), `turbulenceStrength`, `resolution`, `blurKernelSize`, `blurIterations` (get/set, live), and `settings`: the simulation tunables as uniforms (`radius`, `shapeVelocity`, `shapeStrength`, `paint`, `advection`, `velocityFade`, `strengthFade`, `turbulenceJitter`, `turbulenceJitterScale`, `turbulencePush`, `turbulencePushScale`, `turbulenceSpeed`, `turbulenceCurlStep`…), change their `.value` live. The fluid example (`examples/basic/fluid.html?debug`) has a panel for all of them. With `gestures: false` the mouse doesn't move on its own: feed it with `app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [clientX, clientY] })`.
+
+**Distortion** (optional): the look of the fluid example ships as a renderer-agnostic GLSL snippet on the class, `MouseFluid.distortionShader`, plus its uniforms on the instance, `fluid.distortionUniforms`. Put the snippet in any fragment shader and bind the uniforms. It's not tied to a postprocessing `Effect`. The snippet gives you two functions:
+
+- `vec2 mouseFluidDistortion(vec2 uv, out vec3 color)`: returns the uv offset to sample your texture with, and writes the color shift to add on top.
+- `vec4 mouseFluidDistort(sampler2D map, vec2 uv)`: the shortcut that does both.
+
+```js
+import { MouseFluid } from '@dghez/keemera/shards'
+
+const fluid = new MouseFluid({ store: app.store, distortion: { colorAmount: 0 } }) // distortion only, no color
+
+const material = new ShaderMaterial({
+    uniforms: { ...fluid.distortionUniforms, uMap: { value: texture } },
+    vertexShader,
+    fragmentShader: /* glsl */ `
+        ${MouseFluid.distortionShader}
+        uniform sampler2D uMap;
+        varying vec2 vUv;
+        void main() { gl_FragColor = mouseFluidDistort(uMap, vUv); }
+    `,
+})
+// postprocessing: new Effect(name, shader, { uniforms: new Map(Object.entries(fluid.distortionUniforms)) })
+```
+
+The `uv` you pass is the screen uv (y up), since the fluid is in screen space. The `distortion` prop overrides the preset (`MouseFluid.distortionPreset`: `rgbShift`, `rgbShiftFact`, `shade`, `colorMultiplier`, `colorMin`, `weight`, `offset`, `offsetStrength`, `colorAmount`, `softness`, `cursorMask`, `cursorRadius`, `cursorFeather`, `cursorSpeed`, `boost`). To change values live, use `fluid.distortion.<name>.value`. The fluid keeps the mouse, aspect and texel uniforms up to date in `update()`. The cursor mask hides the fresh brush disc under the cursor, and `boost` lifts the trails of slow moves.
+
 #### BufferViewer (WIP)
 
 A debug overlay that draws textures (render targets, data textures) on screen. Options: `store` (required), `width` (default `300`), `x` and `y` (pixels from the bottom-left corner). It draws on top of the main render, so call it after rendering:
@@ -689,6 +751,54 @@ To use it as a Claude Code skill, copy it into your project (re-run after upgrad
 ```bash
 mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/skills/
 ```
+
+## Changelog
+
+### 0.1.7 (2026-11-17)
+
+**New**
+
+- **`MouseFluid` shard**: cheap mouse fluid simulation on low-res ping-pong targets, output as a shared texture uniform, with optional texture-driven turbulence and a renderer-agnostic distortion snippet, `MouseFluid.distortionShader` (see [MouseFluid](#mousefluid)).
+
+**Changed**
+
+- `postprocessing` (>=6.35) is now a peer dependency, required by `@dghez/keemera/shards`.
+
+### 0.1.6 (2026-11-03)
+
+The library is now written in TypeScript. The runtime API is unchanged: JavaScript projects keep working as before.
+
+**New**
+
+- **Bundled type declarations** for every entry point (`@dghez/keemera`, `/shards`, `/helpers`, `/shaders`), wired through the `types` condition in `package.json` `exports`. They resolve with both `Bundler` and `NodeNext` module resolution.
+- **Typed events**: `on`, `once`, `off` and `emit` autocomplete the default event names and infer their payloads, e.g. `on(EVENTS.APP_TICK, state => …)` gives a `FrameState`. Custom event names are still accepted as plain strings.
+- **`KeemeraEventMap`**: extend it with `declare module '@dghez/keemera'` to type your own events (see [Events and priorities](#events-and-priorities)).
+- **Exported types**: `KeemeraOptions`, `Store`, `FrameState`, `RenderFunction`, `GlState`, `Asset`, `LoadedAsset`, `LoadedTexture`, `LoadedGLTF`, `ResourcesOptions`, `ResourceProgress`, `CameraOptions`, `ScrollState`, `Uniforms`, `Shepherdable`, plus the prop types of every shard (`TrackerProps`, `StickyConfig`, `FitModelProps`, `SectionMaskProps`, `StencilMeshProps`, `BufferViewerProps`, …).
+- **`Shepherd<State>`** is generic, so `update(state)` and `resize(state)` can be typed.
+- **`resources.get<T>(key)`** takes an optional type parameter, e.g. `resources.get<LoadedTexture>('plate')`.
+
+**Changed**
+
+- TypeScript users need `@types/three` installed (`npm i -D @types/three`).
+- Docs: `WEBGL_BEFORE_RENDER` and `WEBGL_AFTER_RENDER` are now documented with their actual payload, `(state, store)`.
+
+**Contributors**
+
+- Sources moved from `.js` to strict `.ts`. New `npm run typecheck` script; `npm run build` also writes `.d.ts` files to `dist/`.
+- ESLint runs `typescript-eslint` on `src`. The examples stay plain JavaScript.
+- `AGENTS.md` and the `.claude/skills` recipes describe the TypeScript conventions.
+
+### 0.1.5
+
+- Package renamed from `keemera` to `@dghez/keemera`.
+
+### 0.1.3
+
+- Added `AGENTS.md` for contributors and the `skills/keemera` usage skill, shipped in the npm package.
+
+### 0.1.1
+
+- First npm release: bundled entry points (`@dghez/keemera`, `/shards`, `/helpers`, `/shaders`).
 
 ## License
 
