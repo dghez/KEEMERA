@@ -650,6 +650,31 @@ const material = new ShaderMaterial({
 
 Useful properties: `uniform` (`{ value: Texture }`), `texture` (the current target), `turbulenceStrength`, `resolution`, `blurKernelSize`, `blurIterations` (get/set, live), and `settings`: the simulation tunables as uniforms (`radius`, `shapeVelocity`, `shapeStrength`, `paint`, `advection`, `velocityFade`, `strengthFade`, `turbulenceJitter`, `turbulenceJitterScale`, `turbulencePush`, `turbulencePushScale`, `turbulenceSpeed`, `turbulenceCurlStep`…), change their `.value` live. The fluid example (`examples/basic/fluid.html?debug`) has a panel for all of them. With `gestures: false` the mouse doesn't move on its own: feed it with `app.events.emit(EVENTS.APP_MOUSE_MOVE, { xy: [clientX, clientY] })`.
 
+**Distortion** (optional): the look of the fluid example ships as a renderer-agnostic GLSL snippet on the class, `MouseFluid.distortionShader`, plus its uniforms on the instance, `fluid.distortionUniforms`. Put the snippet in any fragment shader and bind the uniforms. It's not tied to a postprocessing `Effect`. The snippet gives you two functions:
+
+- `vec2 mouseFluidDistortion(vec2 uv, out vec3 color)`: returns the uv offset to sample your texture with, and writes the color shift to add on top.
+- `vec4 mouseFluidDistort(sampler2D map, vec2 uv)`: the shortcut that does both.
+
+```js
+import { MouseFluid } from '@dghez/keemera/shards'
+
+const fluid = new MouseFluid({ store: app.store, distortion: { colorAmount: 0 } }) // distortion only, no color
+
+const material = new ShaderMaterial({
+    uniforms: { ...fluid.distortionUniforms, uMap: { value: texture } },
+    vertexShader,
+    fragmentShader: /* glsl */ `
+        ${MouseFluid.distortionShader}
+        uniform sampler2D uMap;
+        varying vec2 vUv;
+        void main() { gl_FragColor = mouseFluidDistort(uMap, vUv); }
+    `,
+})
+// postprocessing: new Effect(name, shader, { uniforms: new Map(Object.entries(fluid.distortionUniforms)) })
+```
+
+The `uv` you pass is the screen uv (y up), since the fluid is in screen space. The `distortion` prop overrides the preset (`MouseFluid.distortionPreset`: `rgbShift`, `rgbShiftFact`, `shade`, `colorMultiplier`, `colorMin`, `weight`, `offset`, `offsetStrength`, `colorAmount`, `softness`, `cursorMask`, `cursorRadius`, `cursorFeather`, `cursorSpeed`, `boost`). To change values live, use `fluid.distortion.<name>.value`. The fluid keeps the mouse, aspect and texel uniforms up to date in `update()`. The cursor mask hides the fresh brush disc under the cursor, and `boost` lifts the trails of slow moves.
+
 #### BufferViewer (WIP)
 
 A debug overlay that draws textures (render targets, data textures) on screen. Options: `store` (required), `width` (default `300`), `x` and `y` (pixels from the bottom-left corner). It draws on top of the main render, so call it after rendering:
@@ -733,7 +758,7 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 
 **New**
 
-- **`MouseFluid` shard**: cheap mouse fluid simulation on low-res ping-pong targets, output as a shared texture uniform, with optional texture-driven turbulence (see [MouseFluid](#mousefluid)).
+- **`MouseFluid` shard**: cheap mouse fluid simulation on low-res ping-pong targets, output as a shared texture uniform, with optional texture-driven turbulence and a renderer-agnostic distortion snippet, `MouseFluid.distortionShader` (see [MouseFluid](#mousefluid)).
 
 **Changed**
 

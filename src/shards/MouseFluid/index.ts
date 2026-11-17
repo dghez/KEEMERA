@@ -1,4 +1,4 @@
-import { Group, HalfFloatType, LinearFilter, NoBlending, NoColorSpace, RepeatWrapping, ShaderMaterial, Vector2, WebGLRenderTarget } from 'three'
+import { Group, HalfFloatType, LinearFilter, NoBlending, NoColorSpace, RepeatWrapping, ShaderMaterial, Vector2, Vector3, WebGLRenderTarget } from 'three'
 import type { IUniform, Texture } from 'three'
 import { GaussianBlurPass } from 'postprocessing'
 
@@ -10,14 +10,56 @@ import requireStore from '../../utils/requireStore'
 import type { Store } from '../../types'
 
 import { fragmentShader, vertexShader } from './shaders'
+import { distortionShader } from './distortion'
 
 export interface MouseFluidProps {
     store: Store
     resolution?: number
     blur?: { kernelSize?: number, iterations?: number }
     turbulence?: { texture: Texture, strength?: number }
+    // overrides of MouseFluid.distortionPreset
+    distortion?: Partial<MouseFluidDistortionPreset>
     debug?: boolean
 }
+
+// look of MouseFluid.distortionShader, live: change `.value`
+export interface MouseFluidDistortionSettings {
+    rgbShift: IUniform<Vector3> // per channel frequency of the color bands
+    rgbShiftFact: IUniform<number> // phase of the color bands
+    shade: IUniform<number>
+    colorMultiplier: IUniform<number>
+    colorMin: IUniform<number> // lowest color shift (negative darkens)
+    weight: IUniform<number> // fluid strength (b) that fades the color shift out
+    offset: IUniform<number> // uv offset per unit of velocity
+    offsetStrength: IUniform<number> // offset scaled by the color shift length
+    colorAmount: IUniform<number> // visible color shift: 0 = distortion only
+    softness: IUniform<number> // fluid read spread, in fluid texels
+    cursorMask: IUniform<number> // 0 = off, 1 = the fresh brush disc under the cursor is hidden
+    cursorRadius: IUniform<number> // uv, inner radius fully masked
+    cursorFeather: IUniform<number> // uv, fade width outside the radius
+    cursorSpeed: IUniform<number> // mouse speed (ndc per frame) at which the mask reaches full size
+    boost: IUniform<number> // velocity response curve: 1 = linear, < 1 lifts slow moves
+}
+
+export type MouseFluidDistortionPreset = { [K in keyof MouseFluidDistortionSettings]: MouseFluidDistortionSettings[K]['value'] }
+
+const DISTORTION_PRESET: Readonly<MouseFluidDistortionPreset> = Object.freeze({
+    rgbShift: new Vector3(2.1, 2.2, 2.3),
+    rgbShiftFact: 0.5,
+    shade: 1.25,
+    colorMultiplier: 1,
+    colorMin: -0.2,
+    weight: 0.01,
+    offset: 0.12,
+    offsetStrength: 5,
+    colorAmount: 1,
+    softness: 1.1,
+    cursorMask: 1,
+    cursorRadius: 0.03,
+    cursorFeather: 0.12,
+    cursorSpeed: 0.03,
+    boost: 0.6,
+})
 
 // simulation tunables, live: change `.value`
 export interface MouseFluidSettings {
@@ -55,8 +97,16 @@ const DEBUG_MARGIN = 16
  * Share `uniform` with the materials reading it (screen uv, y up): it always holds the current frame.
  */
 export default class MouseFluid extends Group {
+    // GLSL snippet for any shader, bind `distortionUniforms` with it
+    static readonly distortionShader = distortionShader
+    // defaults of `distortion`, override them with the `distortion` prop
+    static readonly distortionPreset = DISTORTION_PRESET
+
     uniform: IUniform<Texture | null> = { value: null }
     settings: MouseFluidSettings
+    distortion: MouseFluidDistortionSettings
+    // bind to any material that includes MouseFluid.distortionShader; runtime ones are kept up to date by update()
+    distortionUniforms: Record<string, IUniform>
 
     #store: Store
     #resolution: number
@@ -75,7 +125,7 @@ export default class MouseFluid extends Group {
         super()
         this.#store = requireStore(props.store, new.target.name)
 
-        const { resolution = 0.125, blur = {}, turbulence, debug = this.#store.isDebug } = props
+        const { resolution = 0.125, blur = {}, turbulence, distortion = {}, debug = this.#store.isDebug } = props
         const { kernelSize = 71, iterations = 2 } = blur
 
         this.#resolution = resolution
@@ -152,6 +202,35 @@ export default class MouseFluid extends Group {
             depthWrite: false,
         }))
 
+        // DISTORTION: preset + overrides, Vector3 cloned so the frozen preset is never shared
+        const preset = { ...DISTORTION_PRESET, ...distortion }
+        const d = Object.fromEntries(
+            Object.entries(preset).map(([key, value]) => [key, { value: value instanceof Vector3 ? value.clone() : value }]),
+        ) as unknown as MouseFluidDistortionSettings
+        this.distortion = d
+        this.distortionUniforms = {
+            uMouseFluid: this.uniform,
+            uMouseFluidRgbShift: d.rgbShift,
+            uMouseFluidRgbShiftFact: d.rgbShiftFact,
+            uMouseFluidShade: d.shade,
+            uMouseFluidColorMultiplier: d.colorMultiplier,
+            uMouseFluidColorMin: d.colorMin,
+            uMouseFluidWeight: d.weight,
+            uMouseFluidOffset: d.offset,
+            uMouseFluidOffsetStrength: d.offsetStrength,
+            uMouseFluidColorAmount: d.colorAmount,
+            uMouseFluidSoftness: d.softness,
+            uMouseFluidCursorMask: d.cursorMask,
+            uMouseFluidCursorRadius: d.cursorRadius,
+            uMouseFluidCursorFeather: d.cursorFeather,
+            uMouseFluidCursorSpeed: d.cursorSpeed,
+            uMouseFluidBoost: d.boost,
+            uMouseFluidMouse: { value: new Vector2() },
+            uMouseFluidMouseSpeed: { value: 0 },
+            uMouseFluidAspect: { value: 1 },
+            uMouseFluidTexel: { value: new Vector2() },
+        }
+
         this.#init()
     }
 
@@ -216,6 +295,11 @@ export default class MouseFluid extends Group {
         uNormalizedSpeed.value.copy(uSpeed.value).normalize()
         this.#prevMouse.copy(smooth)
 
+        // distortion runtime: same mouse as the brush; speed eased so the cursor mask doesn't pop
+        const du = this.distortionUniforms
+        du.uMouseFluidMouse.value.copy(uMouse.value)
+        du.uMouseFluidMouseSpeed.value += (uSpeed.value.length() - du.uMouseFluidMouseSpeed.value) * 0.2
+
         // SWAP: the old prev becomes the target rendered this frame
         const { curr, prev } = this.#targets
         this.#targets.curr = prev
@@ -242,6 +326,9 @@ export default class MouseFluid extends Group {
         const w = Math.max(1, Math.round(width * this.#resolution))
         const h = Math.max(1, Math.round(height * this.#resolution))
         const { prev, curr, blurred } = this.#targets
+
+        this.distortionUniforms.uMouseFluidAspect.value = width / Math.max(1, height)
+        this.distortionUniforms.uMouseFluidTexel.value.set(1 / w, 1 / h)
 
         if (curr.width === w && curr.height === h) return
 
