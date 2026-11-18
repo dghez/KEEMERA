@@ -1,4 +1,4 @@
-import { REVISION, TextureLoader, EquirectangularReflectionMapping, SRGBColorSpace } from 'three'
+import { REVISION, FileLoader, TextureLoader, EquirectangularReflectionMapping, SRGBColorSpace } from 'three'
 import type { DataTexture, Mesh, Texture, WebGLRenderer } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
@@ -8,6 +8,7 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 
 import { EVENTS } from '../events'
 import { GLTFCurveExtension } from './GLTFCurveExtension.js'
+import FontPack from './font'
 import type { Store, ResourceProgress } from '../types'
 
 // Local shape of @monogrid/gainmap-js (optional peer), so the emitted types don't depend on it
@@ -29,7 +30,7 @@ const SUPPORT_TYPES = ['ktx', 'draco', 'gainmap', 'envmap', 'curves'] as const
 
 export type SupportType = typeof SUPPORT_TYPES[number]
 export type SupportOptions = Partial<Record<SupportType, boolean>>
-export type AssetType = 'gltf' | 'texture' | 'envmap' | 'gainmap' | 'fbo'
+export type AssetType = 'gltf' | 'texture' | 'envmap' | 'gainmap' | 'fbo' | 'font'
 
 export interface Asset {
     key: string
@@ -52,7 +53,8 @@ export interface FboData {
 
 export type LoadedGLTF = GLTF & { config: Asset }
 export type LoadedTexture = Texture & { config: Asset }
-export type LoadedAsset = LoadedGLTF | LoadedTexture
+export type LoadedFont = FontPack & { config: Asset }
+export type LoadedAsset = LoadedGLTF | LoadedTexture | LoadedFont
 
 export interface ResourcesOptions {
     support?: SupportOptions
@@ -316,6 +318,15 @@ export default class Resources {
             })
         }
 
+        if (type === 'font') {
+            const loader = new FileLoader().setResponseType('arraybuffer')
+            return fetch<ArrayBuffer>(loader).then((buffer) => {
+                const font = new FontPack(buffer, key) as LoadedFont
+                font.config = el
+                return font
+            })
+        }
+
         if (type === 'fbo') {
             return fetch<Texture>(loaders.texture).then((loaded) => {
                 const texture = loaded as LoadedTexture
@@ -386,6 +397,11 @@ export default class Resources {
 
     #disposeAsset(asset: LoadedAsset) {
         if (!asset) return
+
+        if ('isFontPack' in asset) {
+            asset.dispose()
+            return
+        }
 
         if ('isTexture' in asset) {
             asset.dispose()
