@@ -2,7 +2,7 @@ import { gsap } from 'gsap'
 import Lenis from 'lenis'
 import { Color, MeshBasicMaterial, ShaderMaterial } from 'three'
 import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
-import { TextLayer } from '@dghez/keemera/shards'
+import { MouseFluid, TextLayer } from '@dghez/keemera/shards'
 
 /* ───────── Options: ?compare, ?wireframe, ?debug ───────── */
 
@@ -39,7 +39,10 @@ const app = new Keemera({
     clearAlpha: 0,
     camera: { useDomSize: true },
     // baked from examples/assets/fonts with `npm run fonts`
-    preload: [{ key: 'geist', type: 'font', path: '/fonts/geist.kfont' }],
+    preload: [
+        { key: 'geist', type: 'font', path: '/fonts/geist.kfont' },
+        { key: 'turbulence', type: 'texture', path: '/turbulence.jpg' },
+    ],
 })
 
 lenis.on('scroll', ({ scroll }) => app.setScroll(scroll))
@@ -199,7 +202,49 @@ const push = center => new ShaderMaterial({
     depthWrite: false,
 })
 
+// the mouse fluid as a screen-space texture: its velocity picks a hue, its strength how much of it shows.
+// fluid.uniform always holds the current frame; the store's resolution maps gl_FragCoord to screen uv
+const fluid = new MouseFluid({
+    store: app.store,
+    turbulence: { texture: app.resources.get('turbulence'), strength: 1 },
+})
+
+const fluidColor = new ShaderMaterial({
+    uniforms: {
+        uFluid: fluid.uniform,
+        uResolution: app.store.uniforms.resolution,
+        uAmount: { value: 3 },
+    },
+    vertexShader: /* glsl */`
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        uniform sampler2D uFluid;
+        uniform vec3 uResolution;
+        uniform float uAmount;
+
+        void main() {
+            vec2 screenUv = gl_FragCoord.xy / (uResolution.xy * uResolution.z);
+            vec3 sim = texture(uFluid, screenUv).rgb;
+            vec2 velocity = (sim.rg - 0.5) * 2.0;
+
+            // direction of the flow → hue (cosine palette), strength → how much of it
+            float angle = atan(velocity.y, velocity.x) / 6.2831853;
+            vec3 hue = 0.5 + 0.5 * cos(6.2831853 * (angle + vec3(0.0, 0.33, 0.67)));
+            float amount = clamp(sim.b * uAmount, 0.0, 1.0);
+
+            gl_FragColor = vec4(mix(keemeraColor.rgb, hue, amount), keemeraColor.a);
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
 const materials = {
+    'fluid': fluidColor,
     'basic': basic,
     'passthrough': passthrough,
     'glyph-uv': glyphUv,
@@ -216,6 +261,7 @@ document.querySelectorAll('[data-text]').forEach((el) => {
 })
 
 const shepherd = new Shepherd()
+shepherd.add(fluid)
 shepherd.add(text)
 
 app.events.on(EVENTS.APP_TICK, state => shepherd.update(state))

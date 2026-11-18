@@ -37,6 +37,7 @@
             /* MeshBasicMaterial multiplies the DOM color by material.color: white lets the material's color through */
             .material.is-white { color: #fff; }
             .material.is-large { max-width: 22ch; font-size: clamp(40px, 6vw, 80px); line-height: 1.1; letter-spacing: -0.02em; }
+            .fluid-text { margin: 0; font-size: clamp(64px, 11vw, 170px); line-height: 0.92; font-weight: 700; letter-spacing: -0.045em; }
             .columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
             .columns p { margin: 0 0 14px; font-size: 19px; line-height: 1.45; }
             @media (max-width: 760px) { .columns { grid-template-columns: 1fr; } }
@@ -80,6 +81,11 @@
             <section>
                 <p class="label" data-text>Materials · ShaderMaterial · glyph UV</p>
                 <p class="material is-large" data-text="glyph-uv">Every letter is a rectangle: this shader paints each quad with its own UV, draws the glyph on top and pushes the letters away from the mouse.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Materials · ShaderMaterial · MouseFluid</p>
+                <p class="fluid-text" data-text="fluid">Stir the color with your mouse</p>
             </section>
 
             <section>
