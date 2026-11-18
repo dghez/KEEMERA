@@ -23,14 +23,16 @@ src/
   events/           EVENTS, PRIORITY, createEmitter, Emitter.ts, types.ts (KeemeraEventMap)
   store/            createStore(), GL_STATES
   resources/        asset loader; GLTFCurveExtension.js is vendored JS (typed by its .d.ts), don't edit it
+                    font.ts reads .kfont packs: the layout is shared with cli/bake.js and shards/TextLayer/shaders.ts, bump the version on both sides when it changes
   shards/           one <Name>/index.ts per shard + index.ts barrel (@dghez/keemera/shards)
   helpers/          one <name>.ts per helper + index.ts barrel (@dghez/keemera/helpers)
   shaders/          one <name>.ts per GLSL snippet + index.ts barrel (@dghez/keemera/shaders)
   utils/            Shepherd, dom (rect, qs, clamp), requireStore
-examples/basic/     dev playground (Lenis, Tracker, sticky, post-processing)
+examples/basic/     dev playground (Lenis, Tracker, sticky, post-processing, text)
 examples/assets/    static files for the examples
 skills/keemera/     consumer skill, shipped in the npm package
 scripts/            build helpers (fix-dts-imports.js adds .js to relative imports in dist .d.ts)
+cli/                keemera-font bin, plain node ESM (shipped): bakes fonts into .kfont packs for TextLayer
 dist/               build output, gitignored
 ```
 
@@ -55,6 +57,7 @@ npm run dev       # examples/basic, aliases `@dghez/keemera/*` to src/ (no build
 npm run typecheck # tsc --noEmit, strict
 npm run lint      # eslint src examples scripts
 npm run build     # vite build + tsc declarations to dist/
+npm run fonts     # re-bake examples/assets/fonts/geist.kfont with cli/keemera-font.js
 ```
 
 There is no test runner. Verify changes with `npm run typecheck`, `npm run lint`, `npm run build`, and by running `npm run dev` (add `?debug` to the URL for state logs). Exercise new public API in `examples/basic` when it makes sense.

@@ -1,6 +1,6 @@
 ---
 name: keemera
-description: Build WebGL scenes with the keemera Three.js starter library. Use when code imports '@dghez/keemera', '@dghez/keemera/shards', '@dghez/keemera/helpers' or '@dghez/keemera/shaders', or when setting up a Keemera app, DOM-tracked meshes (Tracker, PlaneBackground, SectionMask), Lenis scroll sync, custom render/post-processing, resources loading or Shepherd lifecycle.
+description: Build WebGL scenes with the keemera Three.js starter library. Use when code imports '@dghez/keemera', '@dghez/keemera/shards', '@dghez/keemera/helpers' or '@dghez/keemera/shaders', or when setting up a Keemera app, DOM-tracked meshes (Tracker, PlaneBackground, SectionMask), DOM text drawn in WebGL (TextLayer, keemera-font, .kfont), Lenis scroll sync, custom render/post-processing, resources loading or Shepherd lifecycle.
 ---
 
 # Using keemera
@@ -103,12 +103,12 @@ await app.resources.load([
 app.resources.get('robot')
 ```
 
-Types: `texture`, `gltf`, `fbo`, `envmap`, `gainmap`. `compress`, Draco, envmap, gainmap and curves need the matching `resources.support` flag (or `await app.resources.addSupport({ ... })`); otherwise loading throws.
+Types: `texture`, `gltf`, `fbo`, `envmap`, `gainmap`, `font` (`.kfont` pack for `TextLayer`). `compress`, Draco, envmap, gainmap and curves need the matching `resources.support` flag (or `await app.resources.addSupport({ ... })`); otherwise loading throws.
 
 ## Building blocks
 
 ```js
-import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer, MouseFluid } from '@dghez/keemera/shards'
+import { Tracker, PlaneBackground, StencilMesh, SectionMask, FitModel, FullscreenQuad, BufferViewer, MouseFluid, TextLayer } from '@dghez/keemera/shards'
 import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
 import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keemera/shaders'
 ```
@@ -119,6 +119,7 @@ import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keeme
 - `FitModel({ model, tracker, scaleFactor })`: scales a model to fit a tracker or `fit(w, h)`.
 - `FullscreenQuad(material)` with `fullscreenQuadVertexShader` / `fullscreenQuadFragmentShader`.
 - `MouseFluid({ store, resolution, blur, turbulence: { texture, strength }, debug })`: offscreen mouse fluid (turbulence is optional: a tileable noise texture, `fluid.turbulenceStrength` to tweak); share `fluid.uniform` (rg velocity, 0.5 = still; b strength; screen uv y-up) with your materials. Add it to a `Shepherd` so it updates on `APP_TICK`, before the render. `@dghez/keemera/shards` needs `postprocessing` installed. For the ready-made distortion, put `MouseFluid.distortionShader` (GLSL) in any shader and bind `fluid.distortionUniforms`: `mouseFluidDistort(map, screenUv)` returns the distorted, color-shifted sample. Use the `distortion` prop or `fluid.distortion.<name>.value` to tune it (defaults: `MouseFluid.distortionPreset`).
+- `TextLayer({ store, fonts, hideDom, compare, wireframe, budget })`: draws DOM text with WebGL (Slug), matched 1:1 to the layout the browser made. `text.track(el | selector, { live })` returns a `TextBlock` (`isDrawn`, `glyphCount`, `chars`, `words`, `lines`, `missing`); `text.untrack(el)`; `text.invalidate()`. One draw call per font pack for all elements; needs `camera.useDomSize` and scroll through `app.setScroll`. Fonts: bake the same files the CSS `@font-face` serves with `npx keemera-font <files…> -o public/fonts/x.kfont` (needs `fontkit`), then load `{ key, type: 'font', path }`. `live: true` for CSS-sticky or transformed elements. `compare: true` tints the DOM copy red under the GPU copy to check alignment; `wireframe: true` / `text.wireframe = true` outlines each glyph's ink box instead of drawing it.
 - Shaders are plain strings with include guards: inline with `${noise3d}` in your GLSL, duplicates are safe.
 
 Add shards to a `Shepherd` and to the scene (`app.scene.add(obj)`).
@@ -129,4 +130,6 @@ Add shards to a `Shepherd` and to the scene (`app.scene.add(obj)`).
 - Tracker positions look wrong → app created without `camera: { useDomSize: true }`, or the tracked element itself is CSS `position: sticky`.
 - Nothing renders → `autoRender: false` with no render function, or `autoRun: false` with no one calling `app.tick()`.
 - Double scroll lag/jitter → Lenis and keemera on separate loops; use the single-ticker pattern above.
+- A TextLayer element stays visible as plain DOM text → it uses a character or font family missing from the `.kfont` (see the console warning); bake it with `--chars` or add the face's file to the pack.
+- TextLayer glyphs misaligned → the CSS font file differs from the baked one, ligatures/OpenType features are forced back on, or an ancestor has a CSS transform.
 - Custom gesture input (`gestures: false`): emit `APP_MOUSE_MOVE` with `{ xy: [x, y] }` in pixels relative to the wrapper.

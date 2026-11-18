@@ -82,7 +82,7 @@ import Keemera, {
 } from '@dghez/keemera'
 
 // @dghez/keemera/shards (see Shards below)
-import { Tracker, PlaneBackground, MouseFluid /* ... */ } from '@dghez/keemera/shards'
+import { Tracker, PlaneBackground, MouseFluid, TextLayer /* ... */ } from '@dghez/keemera/shards'
 
 // @dghez/keemera/helpers
 import { getPlaneSize, uvCover } from '@dghez/keemera/helpers'
@@ -446,14 +446,14 @@ app.resources.has('robot')
 app.resources.getAll() // Map
 ```
 
-Built-in types: `texture`, `gltf`, `fbo` (texture plus pixel data in `texture.userData.fbo`).
+Built-in types: `texture`, `gltf`, `fbo` (texture plus pixel data in `texture.userData.fbo`), `font` (a `.kfont` pack for [TextLayer](#textlayer), baked with `keemera-font`).
 
 Each asset is an object:
 
 | Field | Description |
 |---|---|
 | `key` | Name used with `get(key)` / `has(key)`; an already loaded key is reused from the cache |
-| `type` | `texture`, `gltf`, `fbo`, `envmap` or `gainmap` |
+| `type` | `texture`, `gltf`, `fbo`, `envmap`, `gainmap` or `font` |
 | `path` | URL of the file |
 | `colorSpace` | `'SRGBColorSpace'` for color textures (textures and envmaps) |
 | `flipY` | Override the texture's `flipY` |
@@ -675,6 +675,62 @@ const material = new ShaderMaterial({
 
 The `uv` you pass is the screen uv (y up), since the fluid is in screen space. The `distortion` prop overrides the preset (`MouseFluid.distortionPreset`: `rgbShift`, `rgbShiftFact`, `shade`, `colorMultiplier`, `colorMin`, `weight`, `offset`, `offsetStrength`, `colorAmount`, `softness`, `cursorMask`, `cursorRadius`, `cursorFeather`, `cursorSpeed`, `boost`). To change values live, use `fluid.distortion.<name>.value`. The fluid keeps the mouse, aspect and texel uniforms up to date in `update()`. The cursor mask hides the fresh brush disc under the cursor, and `boost` lifts the trails of slow moves.
 
+#### TextLayer
+
+Draws DOM text with WebGL, matched 1:1 to the page. The browser still lays the text out (line breaks, kerning, letter-spacing, justify, `<sup>`), and the layer reads every glyph's position back with a `Range`. The GPU then draws each glyph straight from the font's quadratic Bézier outlines with the [Slug](https://terathon.com/blog/decade-slug.html) algorithm, so it stays sharp at any size and scale. The DOM text stays in the page, transparent, so selection, find-in-page, screen readers and SEO keep working.
+
+It's fast: one instanced draw call per font pack for every tracked element, and scrolling only moves one transform (no DOM reads, no buffer writes). An element is measured again only when its size, its text or the fonts change. Needs `camera: { useDomSize: true }` and the scroll driven through `app.setScroll`, like `Tracker`.
+
+**1. Bake the fonts.** The CLI turns font files into a `.kfont` pack: curve and band textures plus glyph metrics. Bake the **same files your CSS `@font-face` serves** (TTF, OTF, WOFF or WOFF2). Several files go into one pack (one texture, one draw call). It needs `fontkit` (`npm i -D fontkit`).
+
+```bash
+npx keemera-font Geist-Regular.woff2 Geist-Italic.woff2 Geist-Bold.woff2 -o public/fonts/geist.kfont
+```
+
+| Option | Description |
+|---|---|
+| `-o, --out` | Output file (required) |
+| `-r, --ranges` | Comma separated: `ascii`, `latin` (default: Latin-1, Latin Extended-A, punctuation, €, ™), `all` |
+| `-c, --chars` | Extra characters to include |
+| `-f, --family` | Family name to match in CSS (default: the font's typographic family) |
+| `-a, --axes` | Variable font instance, e.g. `wght=500,opsz=14` |
+
+Each face is matched to the CSS by family, weight and style (read from the font). The pack is served publicly and contains the outlines: fine for OFL fonts, but check the licence of commercial ones.
+
+**2. Load it and track elements.**
+
+```js
+const app = new Keemera({
+    wrapper,
+    canvas,
+    clearAlpha: 0,
+    camera: { useDomSize: true },
+    preload: [{ key: 'geist', type: 'font', path: '/fonts/geist.kfont' }],
+})
+await app.ready
+
+const text = new TextLayer({ store: app.store })
+app.scene.add(text)
+shepherd.add(text) // update() every frame, resize() on APP_RESIZE
+
+text.track('h1')
+document.querySelectorAll('[data-gl-text]').forEach(el => text.track(el))
+text.track(stickyLabel, { live: true })
+text.untrack('h1') // gives the text back to the DOM
+```
+
+Options: `store` (required), `fonts` (array of loaded packs; default: every `font` asset in `store.resources`), `hideDom` (default `true`), `compare` (default `false`, see below), `wireframe` (default `false`, see below), `budget` (ms of measuring per frame, default `4`; at least one element is measured each frame).
+
+`track(target, { live })` takes an element or a selector and returns a `TextBlock`. Use `live: true` for elements that move without the page reflowing (CSS `position: sticky`, CSS transforms): their rect is read every frame. `TextBlock` exposes `isDrawn`, `glyphCount`, `chars`, `words`, `lines` and `missing`. `text.invalidate()` measures every element again, e.g. after a style change the observers can't see.
+
+It measures again on its own when an element resizes (ResizeObserver), when its text changes (MutationObserver), when the page's size changes, and when a web font finishes loading (`document.fonts`). The DOM copy gets `-webkit-text-fill-color: transparent` only after the first successful measure, so a cold font never flashes empty, plus `font-variant-ligatures: none` so the DOM and the GPU draw the same glyphs. Selected text shows the DOM copy over the highlight (an injected `::selection` rule), which looks right when the canvas sits behind the page.
+
+**Debugging the match:** `compare: true` paints the DOM copy red under the GPU copy. Matching text looks like one even color; any drift shows as a red fringe on one side. `wireframe: true` (or `layer.wireframe = true` at runtime, which recompiles the shader once) draws each glyph's ink box as a 1px outline instead of the glyph; combine it with `compare` to see the boxes over the DOM text.
+
+**Limitations:** an element that uses a character missing from the packs (or a font family with no baked face) stays in the DOM, with a console warning: it's never drawn with holes. No complex shaping (Arabic, Indic), OpenType features (small caps, alternates), color emoji or vertical writing. Faux bold/italic (a weight or style you didn't bake) won't match. CSS transforms on the text's ancestors are not supported, except through `live` for translations. Text decorations (underlines) stay in the DOM.
+
+Each glyph instance already stores its character, word, line and character-in-line indices (`aIndex`), so per-letter, word and line animation can be added later.
+
 #### BufferViewer (WIP)
 
 A debug overlay that draws textures (render targets, data textures) on screen. Options: `store` (required), `width` (default `300`), `x` and `y` (pixels from the bottom-left corner). It draws on top of the main render, so call it after rendering:
@@ -728,7 +784,8 @@ const vertexShader = /* glsl */ `
 ```bash
 nvm use          # Node 20.19+
 npm install
-npm run dev      # examples/basic playground (Lenis, Tracker, one instance)
+npm run dev      # examples/basic playground (Lenis, Tracker, one instance); /text.html for TextLayer
+npm run fonts    # bake the example's Geist pack (examples/assets/fonts)
 npm run build    # dist/ (ESM, minified, one file per entry, no sourcemaps) + .d.ts
 npm run typecheck
 npm run lint
@@ -753,6 +810,15 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 ```
 
 ## Changelog
+
+### Unreleased
+
+**New**
+
+- **`TextLayer` shard**: DOM text drawn by WebGL from the fonts' outlines (Slug), at the positions the browser laid it out. One instanced draw per font pack, re-measured only on resize, text or font changes (see [TextLayer](#textlayer)).
+- **`font` asset type**: loads `.kfont` packs. New types: `LoadedFont`, `FontPack`, `FontPackFace`, `FontGlyph`, `FontStyle`, `TextLayerProps`, `TextBlock`, `TextBlockOptions`.
+- **`keemera-font` CLI** (`npx keemera-font`): bakes TTF / OTF / WOFF / WOFF2 files into a `.kfont` pack. Needs `fontkit`, a new optional peer dependency.
+- Example: `examples/basic/text.html`, with Geist (OFL) self-hosted in `examples/assets/fonts`.
 
 ### 0.1.7 (2026-11-17)
 
@@ -803,3 +869,5 @@ The library is now written in TypeScript. The runtime API is unchanged: JavaScri
 ## License
 
 MIT
+
+`TextLayer`'s coverage shader is a port of Eric Lengyel's [Slug reference shaders](https://github.com/EricLengyel/Slug) (MIT / Apache-2.0); the Slug patent was dedicated to the public domain in March 2026. Reading glyph positions back from the DOM follows dom-gpu-text by Jesper Landberg (MIT). The example's Geist font is © The Geist Project Authors, SIL OFL 1.1 (`examples/assets/fonts/OFL.txt`).
