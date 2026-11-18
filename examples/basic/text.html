@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>KEEMERA · text</title>
+        <style>
+            /* the same files the bake read (npm run fonts): the GPU copy matches the DOM exactly */
+            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
+            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: block; }
+            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: block; }
+            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: block; }
+
+            html.lenis, html.lenis body { height: auto; }
+            html, body { margin: 0; background: #f2f0ea; color: #1c1b18; font: 17px/1.5 'Geist', sans-serif; -webkit-font-smoothing: antialiased; }
+            ::selection { background: #1c1b18; color: #f2f0ea; }
+            /* behind the page, like the other examples: selected text shows its DOM copy over the highlight */
+            .gl { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+            .gl canvas { display: block; width: 100%; height: 100%; }
+
+            main { position: relative; z-index: 1; padding: 0 6vw 30vh; }
+            section { padding: 12vh 0 0; max-width: 1100px; }
+            .note { color: #8a867b; font-size: 13px; letter-spacing: 0.02em; margin: 0 0 18px; }
+            .note code { font-family: ui-monospace, monospace; }
+
+            h1 { margin: 0; font-size: clamp(64px, 12vw, 180px); line-height: 0.9; font-weight: 700; letter-spacing: -0.05em; }
+            .lead { margin: 28px 0 0; max-width: 34ch; font-size: clamp(22px, 2.4vw, 32px); line-height: 1.3; letter-spacing: -0.01em; }
+            .lead em { color: #a3392a; }
+            .lead strong { font-weight: 700; }
+            .justify { margin: 0; max-width: 62ch; text-align: justify; font-size: 17px; }
+            .label { margin: 0 0 14px; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.22em; color: #5a574f; }
+            .medium { font-weight: 500; }
+            .stress { columns: 3 280px; column-gap: 32px; font-size: 14px; line-height: 1.45; color: #3d3b35; }
+            .stress p { margin: 0 0 12px; break-inside: avoid; }
+
+            .pin { height: 160vh; position: relative; border-left: 1px dashed #c9c5ba; padding-left: 24px; }
+            .pin p { position: sticky; top: 24px; margin: 0; font-size: 28px; font-weight: 500; letter-spacing: -0.02em; }
+
+            .hud { position: fixed; right: 12px; bottom: 12px; z-index: 3; background: #1c1b18; color: #f2f0ea; padding: 10px 12px; font: 12px/1.5 ui-monospace, monospace; white-space: pre; }
+        </style>
+    </head>
+    <body>
+        <div class="gl" data-gl><canvas></canvas></div>
+
+        <main>
+            <section>
+                <p class="note">TextLayer · every glyph below is drawn by WebGL from Geist's outlines (Slug), where the browser laid it out. Select it, resize, add <code>?compare</code>, press W for the glyph boxes.</p>
+                <h1 data-text>Keemera</h1>
+                <p class="lead" data-text>Text the browser lays out, <em>drawn on the GPU</em> straight from <strong>quadratic Bézier</strong> outlines: sharp at any size, kerned and wrapped exactly like the DOM.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Justified · text-transform · sup</p>
+                <p class="justify" data-text>Nothing here is laid out twice. The browser breaks the lines, applies kerning and letter-spacing, justifies the block and sets E = mc<sup>2</sup>; a Range per character reads each pen position back. The GPU only rasterises: <span class="medium">one instanced draw for every element of a font pack</span>, so scrolling moves one transform and a re-measure happens only when an element’s size, text or font changes. Ligatures are off on tracked elements, so “fi” and “fl” draw the same glyphs as the DOM.</p>
+            </section>
+
+            <section>
+                <p class="label">Left to the DOM</p>
+                <p class="lead" data-text>Characters outside the baked subset ✦ 日本語 keep the whole element in the DOM.</p>
+            </section>
+
+            <section class="pin">
+                <p data-text="live">CSS sticky, tracked with { live: true }</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Stress · about ten thousand glyphs</p>
+                <div class="stress" data-stress></div>
+            </section>
+        </main>
+
+        <div class="hud" data-hud></div>
+
+        <script type="module" src="./text.js"></script>
+    </body>
+</html>
