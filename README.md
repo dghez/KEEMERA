@@ -519,7 +519,7 @@ import {Tracker, .....} from '@dghez/keemera/shards'
 | [FitModel](#fitmodel) | `Group` | Scales a model uniformly to fit a size or a tracked element | — |
 | [FullscreenQuad](#fullscreenquad) | `Mesh` | One triangle covering the screen, for post or full-screen shaders | — |
 | [MouseFluid](#mousefluid) | `Group` | Cheap mouse fluid sim as a texture (velocity + strength), plus a distortion snippet | `store`, `postprocessing` |
-| [TextLayer](#textlayer) | `Group` | DOM text drawn by WebGL (Slug), matched 1:1 to the page, one draw call per font pack | `store`, `useDomSize`, a `.kfont` |
+| [TextLayer](#textlayer) | `Group` | DOM text drawn by WebGL (Slug), matched 1:1 to the page, any three.js material, one draw call per font pack and material | `store`, `useDomSize`, a `.kfont` |
 | [BufferViewer](#bufferviewer-wip) (WIP) | — | Debug overlay that draws textures on screen | `store` |
 
 Shards that need app data take a **required** `store` and throw if it's missing. All of them expose `update()`, `resize()` and/or `destroy()` where it makes sense, so you can hand them to a `Shepherd`.
@@ -691,7 +691,7 @@ The `uv` you pass is the screen uv (y up), since the fluid is in screen space. T
 
 Draws DOM text with WebGL, matched 1:1 to the page. The browser still lays the text out (line breaks, kerning, letter-spacing, justify, `<sup>`), and the layer reads every glyph's position back with a `Range`. The GPU then draws each glyph straight from the font's quadratic Bézier outlines with the [Slug](https://terathon.com/blog/decade-slug.html) algorithm, so it stays sharp at any size and scale. The DOM text stays in the page, transparent, so selection, find-in-page, screen readers and SEO keep working.
 
-It's fast: one instanced draw call per font pack for every tracked element, and scrolling only moves one transform (no DOM reads, no buffer writes). An element is measured again only when its size, its text or the fonts change. Needs `camera: { useDomSize: true }` and the scroll driven through `app.setScroll`, like `Tracker`.
+It's fast: one instanced draw call per font pack and material for every tracked element, and scrolling only moves one transform (no DOM reads, no buffer writes). An element is measured again only when its size, its text or the fonts change. Needs `camera: { useDomSize: true }` and the scroll driven through `app.setScroll`, like `Tracker`.
 
 **1. Bake the fonts.** The CLI turns font files into a `.kfont` pack: curve and band textures plus glyph metrics. Bake the **same files your CSS `@font-face` serves** (TTF, OTF, WOFF or WOFF2). Several files go into one pack (one texture, one draw call). It needs `fontkit` (`npm i -D fontkit`).
 
@@ -731,9 +731,9 @@ text.track(stickyLabel, { live: true })
 text.untrack('h1') // gives the text back to the DOM
 ```
 
-Options: `store` (required), `fonts` (array of loaded packs; default: every `font` asset in `store.resources`), `hideDom` (default `true`), `compare` (default `false`, see below), `wireframe` (default `false`, see below), `budget` (ms of measuring per frame, default `4`; at least one element is measured each frame).
+Options: `store` (required), `fonts` (array of loaded packs; default: every `font` asset in `store.resources`), `hideDom` (default `true`), `compare` (default `false`, see below), `wireframe` (default `false`, see below), `budget` (ms of measuring per frame, default `4`; at least one element is measured each frame), `material` (see [Materials](#textlayer-materials)).
 
-`track(target, { live })` takes an element or a selector and returns a `TextBlock`. Use `live: true` for elements that move without the page reflowing (CSS `position: sticky`, CSS transforms): their rect is read every frame. `TextBlock` exposes `isDrawn`, `glyphCount`, `chars`, `words`, `lines` and `missing`. `text.invalidate()` measures every element again, e.g. after a style change the observers can't see.
+`track(target, { live, material })` takes an element or a selector and returns a `TextBlock`. Use `live: true` for elements that move without the page reflowing (CSS `position: sticky`, CSS transforms): their rect is read every frame. `TextBlock` exposes `isDrawn`, `glyphCount`, `chars`, `words`, `lines` and `missing`. `text.invalidate()` measures every element again, e.g. after a style change the observers can't see.
 
 It measures again on its own when an element resizes (ResizeObserver), when its text changes (MutationObserver), when the page's size changes, and when a web font finishes loading (`document.fonts`). The DOM copy gets `-webkit-text-fill-color: transparent` only after the first successful measure, so a cold font never flashes empty, plus `font-variant-ligatures: none` so the DOM and the GPU draw the same glyphs. Selected text shows the DOM copy over the highlight (an injected `::selection` rule), which looks right when the canvas sits behind the page.
 
@@ -741,7 +741,68 @@ It measures again on its own when an element resizes (ResizeObserver), when its 
 
 **Limitations:** an element that uses a character missing from the packs (or a font family with no baked face) stays in the DOM, with a console warning: it's never drawn with holes. No complex shaping (Arabic, Indic), OpenType features (small caps, alternates), color emoji or vertical writing. Faux bold/italic (a weight or style you didn't bake) won't match. CSS transforms on the text's ancestors are not supported, except through `live` for translations. Text decorations (underlines) stay in the DOM.
 
-Each glyph instance already stores its character, word, line and character-in-line indices (`aIndex`), so per-letter, word and line animation can be added later.
+<a id="textlayer-materials"></a>**Materials.** Like [troika-three-text](https://github.com/protectwise/troika/tree/main/packages/troika-three-text), the text draws with **any three.js material**: the layer wraps it (the wrapper has your material as its prototype, so later changes to color, opacity, uniform values or `needsUpdate` show through) and injects Slug when the shader compiles. Elements that share a material share a draw call; each different material adds one.
+
+```js
+const text = new TextLayer({ store, material })       // default for every element; optional
+text.track('h1', { material: myShaderMaterial })       // per element; track it again with another material to swap
+text.material = new MeshBasicMaterial({ color: 'red' }) // changes every element without its own
+```
+
+- **Default**: an unlit `MeshBasicMaterial` that draws the DOM color.
+- **Built-in materials** (`MeshBasicMaterial`, `MeshStandardMaterial`, …): the DOM color goes through `diffuseColor`, so `material.color` tints it (white keeps the DOM color). Maps, lights and clipping planes work. Keep `transparent` blending in mind: the layer turns it on.
+- **`ShaderMaterial`**: write it as for any mesh. `position` and `uv` already hold the glyph's values, and the glyph coverage is applied after your `main()`, so write `gl_FragColor` (premultiplied if the material is `premultipliedAlpha`). Include `<colorspace_fragment>` to match the renderer's output.
+
+```js
+const gradient = new ShaderMaterial({
+    uniforms: { uFrom: { value: new Color('#a3392a') }, uTo: { value: new Color('#1c1b18') } },
+    vertexShader: /* glsl */`
+        varying vec2 vUv;
+        void main() {
+            vUv = uv; // 0–1 across the whole element
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        uniform vec3 uFrom;
+        uniform vec3 uTo;
+        varying vec2 vUv;
+        void main() {
+            gl_FragColor = vec4(mix(uFrom, uTo, vUv.x), 1.0);
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+text.track('h1', { material: gradient })
+```
+
+What your shaders can read:
+
+| Stage | Name | Value |
+|---|---|---|
+| vertex | `position` | the glyph quad's corner, css px in the layer (y up), `z = 0` |
+| vertex | `uv` | position inside the **element**, 0–1, y up |
+| vertex | `keemeraGlyphUv` | 0–1 inside the glyph's quad |
+| vertex, fragment | `keemeraIndex` | `vec4(char, word, line, charInLine)` |
+| vertex | `keemeraSize` | font size, css px |
+| vertex | `keemeraGlyphCenter`, `keemeraWordCenter`, `keemeraLineCenter` | centers of the glyph's ink box, its word and its line, in the same space as `position`: move a glyph, a word or a line as one piece around them |
+| vertex, fragment | `keemeraColor` | the DOM color, linear rgba |
+| fragment | `keemeraCoverage` | how much of the pixel the glyph covers, 0–1. Computed before your `main()` and applied after it, so you can overwrite it: `keemeraCoverage = 1.0` draws the whole glyph rectangle |
+
+For example, pushing words away from the pointer (`uMouse` in world px; the example page does it letter by letter, word by word and line by line):
+
+```glsl
+vec2 center = (modelMatrix * vec4(keemeraWordCenter, 0.0, 1.0)).xy;
+vec2 away = center - uMouse;
+float force = 1.0 - smoothstep(0.0, uRadius, length(away));
+vec3 p = position;
+p.xy += normalize(away) * force * uStrength;
+gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+```
+
+Every injected name starts with `keemera` / `uKeemera` / `vKeemera`, so avoid those in your code. `RawShaderMaterial` and `glslVersion: GLSL3` throw: the first has no three.js prefix to inject into, the second declares its own output instead of `gl_FragColor`. Your material is never disposed by the layer. Uniforms you add to a `ShaderMaterial` after its first use are not picked up (add them up front). No shadows (depth materials) yet.
 
 #### BufferViewer (WIP)
 
@@ -827,7 +888,7 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 
 **New**
 
-- **`TextLayer` shard**: DOM text drawn by WebGL from the fonts' outlines (Slug), at the positions the browser laid it out. One instanced draw per font pack, re-measured only on resize, text or font changes (see [TextLayer](#textlayer)).
+- **`TextLayer` shard**: DOM text drawn by WebGL from the fonts' outlines (Slug), at the positions the browser laid it out. One instanced draw per font pack and material, re-measured only on resize, text or font changes. Draws with any three.js material, `ShaderMaterial` included, per element or for the whole layer (see [TextLayer](#textlayer)).
 - **`font` asset type**: loads `.kfont` packs. New types: `LoadedFont`, `FontPack`, `FontPackFace`, `FontGlyph`, `FontStyle`, `TextLayerProps`, `TextBlock`, `TextBlockOptions`.
 - **`keemera-font` CLI** (`npx keemera-font`): bakes TTF / OTF / WOFF / WOFF2 files into a `.kfont` pack. Needs `fontkit`, a new optional peer dependency.
 - Example: `examples/basic/text.html`, with Geist (OFL) self-hosted in `examples/assets/fonts`.

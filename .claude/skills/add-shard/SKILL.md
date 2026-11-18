@@ -30,6 +30,7 @@ A shard is a reusable Three.js object (usually a `Group` or `Mesh` subclass) exp
   this.#store = requireStore(props.store, new.target.name)
   ```
   Never import anything global; everything comes from `store`.
+- Read `store` (mouse, viewport, time, scroll) and pass `store.uniforms` objects to materials instead of adding listeners, clocks or per-frame uniform updates. If the store lacks something the shard needs, propose adding it to the store rather than computing it locally.
 - Private state in typed `#fields`, public fields declared with their types, setup in `#init()`.
 - Implement only the hooks that make sense, so it works with `Shepherd`:
   - `update(state)`: per frame, `state` is the frame state (`delta, elapsed, frame, width, height, dpr, scroll, mouse`)

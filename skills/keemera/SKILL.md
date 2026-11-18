@@ -32,6 +32,18 @@ Other useful options: `debug`, `autoRun` (false = call `app.tick()` yourself), `
 ## Core rules
 
 - **Pass `app.store`, don't import globals.** Shards and your own components receive `{ store }`; read `store.viewport`, `store.mouse`, `store.time`, `store.uniforms`, `store.camera`, `store.events` from it. You can add your own keys to the store.
+- **Use `app.store` before writing your own.** Before adding pointer, resize, scroll or clock code, check what the store already has:
+  - `store.mouse`: `static`, `smooth`, `smoother` (NDC, y up), `viewport`, `viewportSmooth` (px), `isDragging`, `isHolding`
+  - `store.viewport`: `width`, `height`, `dpr`, `scroll`
+  - `store.time`
+  - `store.uniforms`: `time`, `timeScale`, `resolution` (css width, height, dpr), `mouse.smooth`, `mouse.smoother` (NDC)
+
+  Pass the store's uniform objects straight into materials, so nothing has to update them per frame:
+  ```js
+  uniforms: { uMouse: store.uniforms.mouse.smooth, uResolution: store.uniforms.resolution }
+  // GLSL, world px from the canvas center (camera.useDomSize): vec2 mouse = uMouse * uResolution.xy * 0.5;
+  ```
+  If something you need isn't in the store, add it to the store (your own keys) and share it from there, rather than keeping a local copy in one component.
 - **Frame order** per `tick()`: time/mouse/camera update → `APP_TICK` → `WEBGL_BEFORE_RENDER` → render → `WEBGL_AFTER_RENDER`. Frame state: `{ delta, elapsed, frame, width, height, dpr, scroll, mouse }`.
 - **Lifecycle with `Shepherd`**: objects with optional `update(state)`, `resize(state)`, `destroy()` hooks. The app doesn't own one; wire it:
   ```js
@@ -119,7 +131,7 @@ import { noise3d, curlNoise, map, coverUv, aastep /* ... */ } from '@dghez/keeme
 - `FitModel({ model, tracker, scaleFactor })`: scales a model to fit a tracker or `fit(w, h)`.
 - `FullscreenQuad(material)` with `fullscreenQuadVertexShader` / `fullscreenQuadFragmentShader`.
 - `MouseFluid({ store, resolution, blur, turbulence: { texture, strength }, debug })`: offscreen mouse fluid (turbulence is optional: a tileable noise texture, `fluid.turbulenceStrength` to tweak); share `fluid.uniform` (rg velocity, 0.5 = still; b strength; screen uv y-up) with your materials. Add it to a `Shepherd` so it updates on `APP_TICK`, before the render. `@dghez/keemera/shards` needs `postprocessing` installed. For the ready-made distortion, put `MouseFluid.distortionShader` (GLSL) in any shader and bind `fluid.distortionUniforms`: `mouseFluidDistort(map, screenUv)` returns the distorted, color-shifted sample. Use the `distortion` prop or `fluid.distortion.<name>.value` to tune it (defaults: `MouseFluid.distortionPreset`).
-- `TextLayer({ store, fonts, hideDom, compare, wireframe, budget })`: draws DOM text with WebGL (Slug), matched 1:1 to the layout the browser made. `text.track(el | selector, { live })` returns a `TextBlock` (`isDrawn`, `glyphCount`, `chars`, `words`, `lines`, `missing`); `text.untrack(el)`; `text.invalidate()`. One draw call per font pack for all elements; needs `camera.useDomSize` and scroll through `app.setScroll`. Fonts: bake the same files the CSS `@font-face` serves with `npx keemera-font <files…> -o public/fonts/x.kfont` (needs `fontkit`), then load `{ key, type: 'font', path }`. `live: true` for CSS-sticky or transformed elements. `compare: true` tints the DOM copy red under the GPU copy to check alignment; `wireframe: true` / `text.wireframe = true` outlines each glyph's ink box instead of drawing it.
+- `TextLayer({ store, fonts, hideDom, compare, wireframe, budget, material })`: draws DOM text with WebGL (Slug), matched 1:1 to the layout the browser made. `text.track(el | selector, { live, material })` returns a `TextBlock` (`isDrawn`, `glyphCount`, `chars`, `words`, `lines`, `missing`); `text.untrack(el)`; `text.invalidate()`. One draw call per font pack and material for all elements; needs `camera.useDomSize` and scroll through `app.setScroll`. Fonts: bake the same files the CSS `@font-face` serves with `npx keemera-font <files…> -o public/fonts/x.kfont` (needs `fontkit`), then load `{ key, type: 'font', path }`. `live: true` for CSS-sticky or transformed elements. `compare: true` tints the DOM copy red under the GPU copy to check alignment; `wireframe: true` / `text.wireframe = true` outlines each glyph's ink box instead of drawing it. Materials: any three.js material (troika-style wrap), per element via `track(el, { material })` or for the layer via `material` / `text.material = …`. Built-ins get the DOM color in `diffuseColor` (`material.color` tints it). A `ShaderMaterial` is written as for a plain mesh: `position` and `uv` (0–1 across the element) are the glyph's, coverage is applied after its `main()`, so it must write `gl_FragColor` (no `glslVersion: GLSL3`, no `RawShaderMaterial`); it can read `keemeraIndex` (char, word, line, charInLine), `keemeraColor`, `keemeraGlyphUv`, `keemeraSize`, `keemeraCoverage` (writable: it's applied after `main()`, `= 1.0` draws the whole quad), and `keemeraGlyphCenter` / `keemeraWordCenter` / `keemeraLineCenter` (same space as `position`) to move a glyph, word or line as one piece.
 - Shaders are plain strings with include guards: inline with `${noise3d}` in your GLSL, duplicates are safe.
 
 Add shards to a `Shepherd` and to the scene (`app.scene.add(obj)`).
@@ -132,4 +144,5 @@ Add shards to a `Shepherd` and to the scene (`app.scene.add(obj)`).
 - Double scroll lag/jitter → Lenis and keemera on separate loops; use the single-ticker pattern above.
 - A TextLayer element stays visible as plain DOM text → it uses a character or font family missing from the `.kfont` (see the console warning); bake it with `--chars` or add the face's file to the pack.
 - TextLayer glyphs misaligned → the CSS font file differs from the baked one, ligatures/OpenType features are forced back on, or an ancestor has a CSS transform.
+- Your own `pointermove` listener, `requestAnimationFrame` clock or `resize` handler duplicates `store.mouse`, `store.time` or `store.viewport` (and drifts out of the app's frame order): read the store instead.
 - Custom gesture input (`gestures: false`): emit `APP_MOUSE_MOVE` with `{ xy: [x, y] }` in pixels relative to the wrapper.

@@ -70,6 +70,7 @@ There is no test runner. Verify changes with `npm run typecheck`, `npm run lint`
 - **Files**: classes are PascalCase (`Name/index.ts` or `Name.ts`); functions and snippets are camelCase files with a default export.
 - **Classes**: props-object constructors (`constructor(props: NameProps)`), `#private` fields, setup in a private `#init()` called from the constructor.
 - **Store**: components that need app data take `{ store }` and validate it with `requireStore(props.store, new.target.name)` from `src/utils/requireStore.ts`.
+- **Store first**: components and examples read `store` data (`mouse`, `viewport`, `time`, `scroll`) and share `store.uniforms` objects with their materials. Don't add listeners, clocks or viewport math the store already provides. When something is missing, propose adding it to the store (`src/store`, `src/Core/*`, `src/types.ts`) instead of a local workaround.
 - **Lifecycle**: expose `update(state)`, `resize(state)` and `destroy()` where they make sense so objects can be handed to a `Shepherd`. `destroy()` disposes materials, geometries, observers and listeners.
 - **Constants**: UPPER_SNAKE, frozen with `Object.freeze({ … } as const)`. Event values are `'SCOPE:NAME'` strings.
 - **Errors**: prefix messages with `[Keemera]` and say how to fix the call.
