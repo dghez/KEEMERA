@@ -510,6 +510,18 @@ Reusable building blocks, imported from `@dghez/keemera/shards`:
 import {Tracker, .....} from '@dghez/keemera/shards'
 ```
 
+| Shard | Is a | What it's for | Needs |
+|---|---|---|---|
+| [Tracker](#tracker) | `Group` | Follows a DOM element on screen, scroll and sticky included | `store`, `useDomSize` |
+| [PlaneBackground](#planebackground) | `Tracker` | A plane that covers a DOM element | `store`, `useDomSize` |
+| [StencilMesh](#stencilmesh) | `Mesh` | Writes a shape into the stencil buffer to mask other materials | `renderer.stencil` |
+| [SectionMask](#sectionmask) | `StencilMesh` | Clips content to a DOM element's area | `store`, `useDomSize`, `renderer.stencil` |
+| [FitModel](#fitmodel) | `Group` | Scales a model uniformly to fit a size or a tracked element | — |
+| [FullscreenQuad](#fullscreenquad) | `Mesh` | One triangle covering the screen, for post or full-screen shaders | — |
+| [MouseFluid](#mousefluid) | `Group` | Cheap mouse fluid sim as a texture (velocity + strength), plus a distortion snippet | `store`, `postprocessing` |
+| [TextLayer](#textlayer) | `Group` | DOM text drawn by WebGL (Slug), matched 1:1 to the page, one draw call per font pack | `store`, `useDomSize`, a `.kfont` |
+| [BufferViewer](#bufferviewer-wip) (WIP) | — | Debug overlay that draws textures on screen | `store` |
+
 Shards that need app data take a **required** `store` and throw if it's missing. All of them expose `update()`, `resize()` and/or `destroy()` where it makes sense, so you can hand them to a `Shepherd`.
 
 #### Tracker
