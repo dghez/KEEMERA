@@ -33,6 +33,14 @@
             .stress { columns: 3 280px; column-gap: 32px; font-size: 14px; line-height: 1.45; color: #3d3b35; }
             .stress p { margin: 0 0 12px; break-inside: avoid; }
 
+            .material { margin: 0; max-width: 40ch; font-size: clamp(22px, 2.4vw, 32px); line-height: 1.3; letter-spacing: -0.01em; }
+            /* MeshBasicMaterial multiplies the DOM color by material.color: white lets the material's color through */
+            .material.is-white { color: #fff; }
+            .material.is-large { max-width: 22ch; font-size: clamp(40px, 6vw, 80px); line-height: 1.1; letter-spacing: -0.02em; }
+            .columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
+            .columns p { margin: 0 0 14px; font-size: 19px; line-height: 1.45; }
+            @media (max-width: 760px) { .columns { grid-template-columns: 1fr; } }
+
             .pin { height: 160vh; position: relative; border-left: 1px dashed #c9c5ba; padding-left: 24px; }
             .pin p { position: sticky; top: 24px; margin: 0; font-size: 28px; font-weight: 500; letter-spacing: -0.02em; }
 
@@ -51,12 +59,57 @@
 
             <section>
                 <p class="label" data-text>Justified · text-transform · sup</p>
-                <p class="justify" data-text>Nothing here is laid out twice. The browser breaks the lines, applies kerning and letter-spacing, justifies the block and sets E = mc<sup>2</sup>; a Range per character reads each pen position back. The GPU only rasterises: <span class="medium">one instanced draw for every element of a font pack</span>, so scrolling moves one transform and a re-measure happens only when an element’s size, text or font changes. Ligatures are off on tracked elements, so “fi” and “fl” draw the same glyphs as the DOM.</p>
+                <p class="justify" data-text>Nothing here is laid out twice. The browser breaks the lines, applies kerning and letter-spacing, justifies the block and sets E = mc<sup>2</sup>; a Range per character reads each pen position back. The GPU only rasterises: <span class="medium">one instanced draw for every element of a font pack and material</span>, so scrolling moves one transform and a re-measure happens only when an element’s size, text or font changes. Ligatures are off on tracked elements, so “fi” and “fl” draw the same glyphs as the DOM.</p>
             </section>
 
             <section>
                 <p class="label">Left to the DOM</p>
                 <p class="lead" data-text>Characters outside the baked subset ✦ 日本語 keep the whole element in the DOM.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Materials · MeshBasicMaterial</p>
+                <p class="material is-white" data-text="basic">Any built-in material works: this block draws with a MeshBasicMaterial, and its color tints the DOM color.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Materials · ShaderMaterial</p>
+                <p class="material" data-text="passthrough">A ShaderMaterial that does nothing at all: it writes the DOM color, and still claims to be a ShaderMaterial.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Materials · ShaderMaterial · glyph UV</p>
+                <p class="material is-large" data-text="glyph-uv">Every letter is a rectangle: this shader paints each quad with its own UV, draws the glyph on top and pushes the letters away from the mouse.</p>
+            </section>
+
+            <section>
+                <p class="label" data-text>Materials · ShaderMaterial · push away from the mouse</p>
+                <div class="columns">
+                    <div>
+                        <p class="label" data-text>Letter by letter</p>
+                        <p data-text="push-glyph">Every glyph is its own piece. The vertex shader moves each quad away from the pointer, around the center of the glyph’s ink.</p>
+                        <p data-text="push-glyph">Coverage is computed from the glyph’s own coordinates, so a moved quad still draws a sharp glyph, however far it travels.</p>
+                        <p data-text="push-glyph">The color follows the same force: a varying carries how far the glyph was pushed, and the fragment shader mixes toward the accent.</p>
+                        <p data-text="push-glyph">Move slowly along a line and the letters part like water, then settle back as the eased mouse leaves them behind.</p>
+                        <p data-text="push-glyph">Nothing here touches the CPU per frame: the store’s mouse and resolution are shared uniforms, read directly by the shader.</p>
+                    </div>
+                    <div>
+                        <p class="label" data-text>Word by word</p>
+                        <p data-text="push-word">Here every glyph of a word moves by the same amount, measured from the word’s center, so words travel as one piece.</p>
+                        <p data-text="push-word">Same buffers and same draw call as the letters, only a different center in the shader: keemeraWordCenter instead of the glyph’s.</p>
+                        <p data-text="push-word">Long words like synchronisation, typographically or straightforwardness hold together while the short ones scatter around them.</p>
+                        <p data-text="push-word">A word ends at a space or at a line break, so the two halves of a word that wraps would move as two pieces.</p>
+                        <p data-text="push-word">Colors shift word by word too: every glyph of a word shares one force, so a word changes color as a whole.</p>
+                    </div>
+                    <div>
+                        <p class="label" data-text>Line by line</p>
+                        <p data-text="push-line">And here whole lines slide, measured from each line’s center. The browser decides where the lines break.</p>
+                        <p data-text="push-line">Resize the window: the lines reflow, the layer measures them again, and their centers follow without any extra code.</p>
+                        <p data-text="push-line">Lines are found by comparing the glyph boxes the browser reports: a new line starts where a glyph stops overlapping the last one.</p>
+                        <p data-text="push-line">Hover near the middle of a paragraph and the lines above and below fan out, colored by how far each one moved.</p>
+                        <p data-text="push-line">The same three centers are there for any effect: rotate a word around its middle, stagger lines, or scale letters in place.</p>
+                    </div>
+                </div>
             </section>
 
             <section class="pin">

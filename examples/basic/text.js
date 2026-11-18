@@ -1,5 +1,6 @@
 import { gsap } from 'gsap'
 import Lenis from 'lenis'
+import { Color, MeshBasicMaterial, ShaderMaterial } from 'three'
 import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
 import { TextLayer } from '@dghez/keemera/shards'
 
@@ -57,8 +58,161 @@ window.addEventListener('keydown', (e) => {
 })
 app.scene.add(text)
 
+// any material works: this ShaderMaterial is written as for a plain mesh. `position` and `uv` are the glyph's,
+// `uv` spans the whole element; Slug coverage is applied after its main()
+const gradient = new ShaderMaterial({
+    uniforms: {
+        uFrom: { value: new Color('#a3392a') },
+        uTo: { value: new Color('#1c1b18') },
+    },
+    vertexShader: /* glsl */`
+        varying vec2 vUv;
+
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        uniform vec3 uFrom;
+        uniform vec3 uTo;
+        varying vec2 vUv;
+
+        void main() {
+            gl_FragColor = vec4(mix(uFrom, uTo, smoothstep(0.0, 1.0, vUv.x)), 1.0);
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
+// a built-in material: the DOM color (white here) times material.color
+const basic = new MeshBasicMaterial({ color: '#2f5bd3', transparent: true, depthWrite: false })
+
+// does nothing a default material wouldn't: keemeraColor is the DOM color, linear
+const passthrough = new ShaderMaterial({
+    vertexShader: /* glsl */`
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        void main() {
+            gl_FragColor = keemeraColor;
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
+// mouse repulsion, shared by the materials below. The store's eased mouse (NDC) and resolution (css px) are
+// shared uniforms: nothing to update per frame
+const repelUniforms = () => ({
+    uMouse: app.store.uniforms.mouse.smooth,
+    uResolution: app.store.uniforms.resolution,
+    uRadius: { value: 180 },
+    uStrength: { value: 48 },
+})
+
+const repel = /* glsl */`
+    uniform vec2 uMouse;
+    uniform vec3 uResolution;
+    uniform float uRadius;
+    uniform float uStrength;
+
+    // moves p away from the mouse, as one piece around center; returns the force, 0–1
+    float repel(inout vec3 p, vec2 center) {
+        // NDC → world px, origin at the canvas center like the layer
+        vec2 mouse = uMouse * uResolution.xy * 0.5;
+        vec2 away = (modelMatrix * vec4(center, 0.0, 1.0)).xy - mouse;
+        float distance = length(away);
+        float force = clamp(1.0 - distance / uRadius, 0.0, 1.0);
+        force *= force;
+        p.xy += away / max(distance, 1e-3) * force * uStrength;
+        return force;
+    }
+`
+
+// every glyph is a quad: paint it with its own UV (red = u, green = v), the glyph on top. Overwriting
+// keemeraCoverage keeps the whole rectangle instead of cutting it to the glyph's outline. Repelled letter by letter
+const glyphUv = new ShaderMaterial({
+    uniforms: repelUniforms(),
+    vertexShader: /* glsl */`
+        ${repel}
+
+        varying vec2 vGlyphUv;
+
+        void main() {
+            vec3 p = position;
+            repel(p, keemeraGlyphCenter);
+            vGlyphUv = keemeraGlyphUv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        varying vec2 vGlyphUv;
+
+        void main() {
+            vec3 color = mix(vec3(vGlyphUv, 0.0), keemeraColor.rgb, keemeraCoverage);
+            gl_FragColor = vec4(color, 1.0);
+            keemeraCoverage = 1.0;
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
+// one material per piece, the only difference is which center it's repelled around
+const push = center => new ShaderMaterial({
+    uniforms: {
+        ...repelUniforms(),
+        uColor: { value: new Color('#e2482b') },
+    },
+    vertexShader: /* glsl */`
+        ${repel}
+
+        varying float vShift;
+
+        void main() {
+            vec3 p = position;
+            // how far it moved, 0–1: drives the color
+            vShift = repel(p, ${center});
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+    `,
+    fragmentShader: /* glsl */`
+        uniform vec3 uColor;
+
+        varying float vShift;
+
+        void main() {
+            // the further it's pushed, the more it turns to uColor
+            vec3 color = mix(keemeraColor.rgb, uColor, clamp(vShift * 1.5, 0.0, 1.0));
+            gl_FragColor = vec4(color, keemeraColor.a);
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
+const materials = {
+    'basic': basic,
+    'passthrough': passthrough,
+    'glyph-uv': glyphUv,
+    'push-glyph': push('keemeraGlyphCenter'),
+    'push-word': push('keemeraWordCenter'),
+    'push-line': push('keemeraLineCenter'),
+}
+
 document.querySelectorAll('[data-text]').forEach((el) => {
-    text.track(el, { live: el.dataset.text === 'live' })
+    text.track(el, {
+        live: el.dataset.text === 'live',
+        material: el.matches('h1') ? gradient : materials[el.dataset.text],
+    })
 })
 
 const shepherd = new Shepherd()
