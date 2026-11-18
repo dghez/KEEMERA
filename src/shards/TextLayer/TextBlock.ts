@@ -1,9 +1,14 @@
+import type { Material } from 'three'
+
 import type FontPack from '../../resources/font'
+import type { BlockRect } from './FaceBatch'
 import type { MeasureResult, PlacedGlyph } from './measure'
 
 export interface TextBlockOptions {
     // read the element's rect every frame: for elements that move without the page reflowing (CSS sticky, transforms)
     live?: boolean
+    // draw this element with its own material (any three.js material, or a ShaderMaterial); default: the layer's
+    material?: Material
 }
 
 // marks tracked elements for the layer's ::selection rule
@@ -20,8 +25,9 @@ export default class TextBlock {
 
     readonly el: HTMLElement
     readonly live: boolean
-    // document position of the element's top-left, css px
-    doc: { x: number, y: number }
+    material: Material | undefined
+    // the element's document rect, css px
+    doc: BlockRect
     groups: Map<FontPack, PlacedGlyph[]>
     // drawn by the GPU; false while waiting for a measure, or when it's left to the DOM
     isDrawn: boolean
@@ -32,12 +38,13 @@ export default class TextBlock {
     // characters the font packs can't draw: the block stays in the DOM
     missing: string[]
 
-    constructor(el: HTMLElement, { live = false }: TextBlockOptions = {}) {
+    constructor(el: HTMLElement, { live = false, material }: TextBlockOptions = {}) {
         this.#saved = new Map()
 
         this.el = el
         this.live = live
-        this.doc = { x: 0, y: 0 }
+        this.material = material
+        this.doc = { x: 0, y: 0, width: 0, height: 0 }
         this.groups = new Map()
         this.isDrawn = false
         this.glyphCount = 0
@@ -76,6 +83,8 @@ export default class TextBlock {
     apply(result: MeasureResult, scrollY: number) {
         this.doc.x = result.rect.left
         this.doc.y = result.rect.top + scrollY
+        this.doc.width = result.rect.width
+        this.doc.height = result.rect.height
         this.chars = result.chars
         this.words = result.words
         this.lines = result.lines

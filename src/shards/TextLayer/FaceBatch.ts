@@ -4,17 +4,26 @@ import {
     InstancedBufferGeometry,
     IntType,
     Mesh,
-    ShaderMaterial,
 } from 'three'
-import type { IUniform } from 'three'
+import type { IUniform, Material } from 'three'
 
-import { fragmentShader, vertexShader } from './shaders'
+import deriveTextMaterial from './material'
+import type { TextMaterial } from './material'
 import type FontPack from '../../resources/font'
 import type { PlacedGlyph } from './measure'
 
-// one quad per glyph, corners in 0..1
+// one quad per glyph, corners in 0..1, facing the camera for lit materials
 const QUAD = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0])
+const QUAD_NORMAL = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])
 const QUAD_INDEX = [0, 1, 2, 2, 1, 3]
+
+// a block's document rect, css px
+export interface BlockRect {
+    x: number
+    y: number
+    width: number
+    height: number
+}
 
 const MIN_CAPACITY = 256
 
@@ -24,7 +33,12 @@ interface Range {
 }
 
 interface Arrays {
+    // pen relative to the block, font size
     pen: Float32Array
+    // the block's document rect: moving a block rewrites only this
+    block: Float32Array
+    // word center x, line center x and y, relative to the block
+    anchor: Float32Array
     box: Float32Array
     glyph: Uint16Array
     // linear rgb + alpha, decoded once per CSS color on the CPU
@@ -35,10 +49,12 @@ interface Arrays {
 type Attributes = { [K in keyof Arrays]: InstancedBufferAttribute }
 
 const ITEM_SIZE = 4
-const KEYS = ['pen', 'box', 'glyph', 'color', 'index'] as const
+const KEYS = ['pen', 'block', 'anchor', 'box', 'glyph', 'color', 'index'] as const
 
 const createArrays = (capacity: number): Arrays => ({
     pen: new Float32Array(capacity * ITEM_SIZE),
+    block: new Float32Array(capacity * ITEM_SIZE),
+    anchor: new Float32Array(capacity * ITEM_SIZE),
     box: new Float32Array(capacity * ITEM_SIZE),
     glyph: new Uint16Array(capacity * ITEM_SIZE),
     color: new Uint16Array(capacity * ITEM_SIZE),
@@ -47,11 +63,13 @@ const createArrays = (capacity: number): Arrays => ({
 
 export interface FaceBatchProps {
     pack: FontPack
+    // the user's material (or the layer's default): the batch draws with a text version of it
+    material: Material
     uniforms: Record<string, IUniform>
     wireframe?: boolean
 }
 
-// Every glyph of one font pack, for every block of a layer: one instanced draw.
+// Every glyph of one font pack and one material, for every block of a layer: one instanced draw.
 // Each block owns a range with headroom, so a re-measure that fits rewrites only its own slots
 export default class FaceBatch {
     #ranges: Map<object, Range>
@@ -61,10 +79,11 @@ export default class FaceBatch {
     #attributes: Attributes | undefined
 
     pack: FontPack
-    material: ShaderMaterial
-    mesh: Mesh<InstancedBufferGeometry, ShaderMaterial>
+    baseMaterial: Material
+    material: TextMaterial
+    mesh: Mesh<InstancedBufferGeometry, TextMaterial>
 
-    constructor({ pack, uniforms, wireframe = false }: FaceBatchProps) {
+    constructor({ pack, material, uniforms, wireframe = false }: FaceBatchProps) {
         this.pack = pack
         this.#ranges = new Map()
         this.#capacity = MIN_CAPACITY
@@ -72,22 +91,13 @@ export default class FaceBatch {
         this.#arrays = createArrays(this.#capacity)
         this.#attributes = undefined
 
-        this.material = new ShaderMaterial({
-            // no glslVersion: three still compiles #version 300 es and declares gl_FragColor for its chunks
-            vertexShader,
-            fragmentShader,
-            uniforms: {
-                ...uniforms,
-                uCurves: { value: pack.curveTexture },
-                uBands: { value: pack.bandTexture },
-            },
-            transparent: true,
-            depthWrite: false,
-            premultipliedAlpha: true,
-            toneMapped: false,
-            clipping: true,
+        this.baseMaterial = material
+        this.material = deriveTextMaterial(material, {
+            ...uniforms,
+            uKeemeraCurves: { value: pack.curveTexture },
+            uKeemeraBands: { value: pack.bandTexture },
         })
-        this.wireframe = wireframe
+        this.material.keemeraWireframe = wireframe
 
         this.mesh = new Mesh(this.#createGeometry(), this.material)
         // glyphs are placed in the vertex shader, the quad's own bounds mean nothing
@@ -98,15 +108,18 @@ export default class FaceBatch {
     #createGeometry() {
         const geometry = new InstancedBufferGeometry()
         geometry.setAttribute('position', new BufferAttribute(QUAD, 3))
+        geometry.setAttribute('normal', new BufferAttribute(QUAD_NORMAL, 3))
         geometry.setIndex(QUAD_INDEX)
 
-        const { pen, box, glyph, color, index } = this.#arrays
+        const { pen, block, anchor, box, glyph, color, index } = this.#arrays
         const glyphAttribute = new InstancedBufferAttribute(glyph, ITEM_SIZE)
         // read as uvec4: band texture coordinates and band counts
         glyphAttribute.gpuType = IntType
 
         this.#attributes = {
             pen: new InstancedBufferAttribute(pen, ITEM_SIZE),
+            block: new InstancedBufferAttribute(block, ITEM_SIZE),
+            anchor: new InstancedBufferAttribute(anchor, ITEM_SIZE),
             box: new InstancedBufferAttribute(box, ITEM_SIZE),
             glyph: glyphAttribute,
             color: new InstancedBufferAttribute(color, ITEM_SIZE, true),
@@ -114,6 +127,8 @@ export default class FaceBatch {
         }
 
         geometry.setAttribute('aPen', this.#attributes.pen)
+        geometry.setAttribute('aBlock', this.#attributes.block)
+        geometry.setAttribute('aAnchor', this.#attributes.anchor)
         geometry.setAttribute('aBox', this.#attributes.box)
         geometry.setAttribute('aGlyph', this.#attributes.glyph)
         geometry.setAttribute('aColor', this.#attributes.color)
@@ -187,10 +202,22 @@ export default class FaceBatch {
         return range
     }
 
-    // all of a block's glyphs in this pack, pens offset by the block's document position
-    write(owner: object, glyphs: PlacedGlyph[], docX: number, docY: number) {
+    #fillBlock(range: Range, rect: BlockRect) {
+        const { block } = this.#arrays
+        for (let i = 0; i < range.capacity; i++) {
+            const o = (range.start + i) * ITEM_SIZE
+            block[o] = rect.x
+            block[o + 1] = rect.y
+            block[o + 2] = rect.width
+            block[o + 3] = rect.height
+        }
+    }
+
+    // all of a block's glyphs in this pack, pens relative to the block
+    write(owner: object, glyphs: PlacedGlyph[], rect: BlockRect) {
         const range = this.#reserve(owner, glyphs.length)
-        const { pen, box, glyph: data, color, index } = this.#arrays
+        const { pen, anchor, box, glyph: data, color, index } = this.#arrays
+        this.#fillBlock(range, rect)
 
         for (let i = 0; i < range.capacity; i++) {
             const o = (range.start + i) * ITEM_SIZE
@@ -201,10 +228,15 @@ export default class FaceBatch {
                 continue
             }
 
-            pen[o] = docX + g.x
-            pen[o + 1] = docY + g.y
+            pen[o] = g.x
+            pen[o + 1] = g.y
             pen[o + 2] = g.size
             pen[o + 3] = 0
+
+            anchor[o] = g.wordX
+            anchor[o + 1] = g.lineX
+            anchor[o + 2] = g.lineY
+            anchor[o + 3] = 0
 
             const { glyph } = g
             box[o] = glyph.x0
@@ -229,18 +261,13 @@ export default class FaceBatch {
         this.mesh.visible = true
     }
 
-    // the block moved in the document: only its pens change
-    move(owner: object, glyphs: PlacedGlyph[], docX: number, docY: number) {
+    // the block moved in the document: only its rect changes
+    move(owner: object, rect: BlockRect) {
         const range = this.#ranges.get(owner)
         if (!range) return
 
-        const { pen } = this.#arrays
-        for (let i = 0; i < glyphs.length; i++) {
-            const o = (range.start + i) * ITEM_SIZE
-            pen[o] = docX + glyphs[i].x
-            pen[o + 1] = docY + glyphs[i].y
-        }
-        this.#markDirty(['pen'], range)
+        this.#fillBlock(range, rect)
+        this.#markDirty(['block'], range)
     }
 
     release(owner: object) {
@@ -256,16 +283,19 @@ export default class FaceBatch {
         }
     }
 
+    get isEmpty() {
+        return !this.#ranges.size
+    }
+
     get wireframe() {
-        return 'KEEMERA_TEXT_WIREFRAME' in this.material.defines
+        return this.material.keemeraWireframe
     }
 
     set wireframe(value: boolean) {
-        if (value === this.wireframe) return
-        this.material.defines = value ? { KEEMERA_TEXT_WIREFRAME: '' } : {}
-        this.material.needsUpdate = true
+        this.material.keemeraWireframe = value
     }
 
+    // the text version only: the base material is the user's
     destroy() {
         this.mesh.removeFromParent()
         this.mesh.geometry.dispose()

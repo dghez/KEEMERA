@@ -29,6 +29,10 @@ export interface PlacedGlyph {
     word: number
     line: number
     charInLine: number
+    // centers, px from the element's top-left, y down: the word's x, the line's x and y (a word sits in one line)
+    wordX: number
+    lineX: number
+    lineY: number
 }
 
 export interface MeasureResult {
@@ -246,6 +250,13 @@ export default function measure(el: HTMLElement, faces: FontPackFace[], cache: M
     let afterSpace = true
     let lineTop = 0
     let lineBottom = 0
+    // extents per word and line, px from the element's left / top
+    const wordMin: number[] = []
+    const wordMax: number[] = []
+    const lineMin: number[] = []
+    const lineMax: number[] = []
+    const lineTops: number[] = []
+    const lineBottoms: number[] = []
 
     for (const { node, style } of runs) {
         for (const { segment, index } of graphemes(node.data)) {
@@ -281,6 +292,15 @@ export default function measure(el: HTMLElement, faces: FontPackFace[], cache: M
             const inLine = charInLine++
             if (style.hidden) continue
 
+            const left = r.left - rect.left
+            const right = r.right - rect.left
+            wordMin[word] = Math.min(wordMin[word] ?? left, left)
+            wordMax[word] = Math.max(wordMax[word] ?? right, right)
+            lineMin[line] = Math.min(lineMin[line] ?? left, left)
+            lineMax[line] = Math.max(lineMax[line] ?? right, right)
+            lineTops[line] = Math.min(lineTops[line] ?? r.top, r.top)
+            lineBottoms[line] = Math.max(lineBottoms[line] ?? r.bottom, r.bottom)
+
             const { face } = style
             if (!face) {
                 result.unmatched.add(style.families)
@@ -299,11 +319,17 @@ export default function measure(el: HTMLElement, faces: FontPackFace[], cache: M
                 }
 
                 if (glyph.locX >= 0) {
-                    result.glyphs.push({ face, glyph, x, y, size: style.size, color: style.color, char, word, line, charInLine: inLine })
+                    result.glyphs.push({ face, glyph, x, y, size: style.size, color: style.color, char, word, line, charInLine: inLine, wordX: 0, lineX: 0, lineY: 0 })
                 }
                 x += glyph.advance * style.size
             }
         }
+    }
+
+    for (const g of result.glyphs) {
+        g.wordX = (wordMin[g.word] + wordMax[g.word]) * 0.5
+        g.lineX = (lineMin[g.line] + lineMax[g.line]) * 0.5
+        g.lineY = (lineTops[g.line] + lineBottoms[g.line]) * 0.5 - rect.top
     }
 
     result.words = word + 1

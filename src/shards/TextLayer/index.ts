@@ -1,8 +1,10 @@
-import { Group } from 'three'
+import { Group, MeshBasicMaterial } from 'three'
+import type { Material } from 'three'
 
 import FaceBatch from './FaceBatch'
 import TextBlock, { BLOCK_ATTRIBUTE } from './TextBlock'
 import measure, { MeasureCache } from './measure'
+import { assertTextMaterial } from './material'
 import { qs } from '../../utils/dom'
 import requireStore from '../../utils/requireStore'
 import type FontPack from '../../resources/font'
@@ -22,6 +24,8 @@ export interface TextLayerProps {
     wireframe?: boolean
     // ms of measuring per frame, at least one element always goes; default 4
     budget?: number
+    // the material every element draws with unless it has its own (track(el, { material })); default: unlit, the DOM color
+    material?: Material
 }
 
 const COMPARE_FILL = 'rgba(255, 0, 0, 0.6)'
@@ -35,14 +39,17 @@ const describe = (el: HTMLElement) => {
 const isFontPack = <T>(asset: T): asset is T & FontPack => !!asset && typeof asset === 'object' && 'isFontPack' in asset
 
 // DOM text drawn on the GPU from the fonts' outlines (Slug), at the positions the browser laid it out.
-// One instanced draw per font pack for every element added; scrolling costs one uniform.
+// One instanced draw per font pack and material for every element added; scrolling moves one transform.
 // Positions are in CSS pixels from the canvas center: needs a pixel-matched camera (`camera: { useDomSize: true }`)
 export default class TextLayer extends Group {
     #store: Store
     #props: TextLayerProps
     #blocks: Map<HTMLElement, TextBlock>
     #dirty: Set<TextBlock>
-    #batches: Map<FontPack, FaceBatch>
+    // one draw per font pack and material
+    #batches: Map<FontPack, Map<Material, FaceBatch>>
+    #material: Material
+    #defaultMaterial: MeshBasicMaterial | undefined
     // holds the batches: scroll and the viewport offset are its transform, the layer's own stays free
     #content: Group
     #live: TextBlock[]
@@ -56,7 +63,7 @@ export default class TextLayer extends Group {
     #selectionStyle: HTMLStyleElement | undefined
 
     uniforms: {
-        uDpr: { value: number }
+        uKeemeraDpr: { value: number }
     }
 
     constructor(props: TextLayerProps) {
@@ -66,6 +73,9 @@ export default class TextLayer extends Group {
         this.#blocks = new Map()
         this.#dirty = new Set()
         this.#batches = new Map()
+        this.#defaultMaterial = undefined
+        assertTextMaterial(props.material)
+        this.#material = props.material ?? this.#createDefaultMaterial()
         this.#content = new Group()
         this.#live = []
         this.#wireframe = props.wireframe ?? false
@@ -78,10 +88,36 @@ export default class TextLayer extends Group {
         this.#selectionStyle = undefined
 
         this.uniforms = {
-            uDpr: { value: 1 },
+            uKeemeraDpr: { value: 1 },
         }
 
         this.#init()
+    }
+
+    // the default material: draws the DOM color, unlit, like the DOM
+    #createDefaultMaterial() {
+        this.#defaultMaterial ??= new MeshBasicMaterial({
+            transparent: true,
+            depthWrite: false,
+            premultipliedAlpha: true,
+            toneMapped: false,
+        })
+        return this.#defaultMaterial
+    }
+
+    // the material of every element without its own; changing it re-draws them
+    get material() {
+        return this.#material
+    }
+
+    set material(value: Material | undefined) {
+        assertTextMaterial(value)
+        const next = value ?? this.#createDefaultMaterial()
+        if (next === this.#material) return
+        this.#material = next
+        for (const block of this.#blocks.values()) {
+            if (!block.material) this.#dirty.add(block)
+        }
     }
 
     get wireframe() {
@@ -91,7 +127,7 @@ export default class TextLayer extends Group {
     // a define, not a uniform: the normal path carries no debug branch. Toggling recompiles once
     set wireframe(value: boolean) {
         this.#wireframe = value
-        for (const batch of this.#batches.values()) batch.wireframe = value
+        for (const batch of this.#eachBatch()) batch.wireframe = value
     }
 
     get blocks() {
@@ -155,18 +191,41 @@ export default class TextLayer extends Group {
         return packs.flatMap(pack => pack.faces)
     }
 
-    #batch(pack: FontPack) {
-        let batch = this.#batches.get(pack)
+    * #eachBatch() {
+        for (const byMaterial of this.#batches.values()) yield * byMaterial.values()
+    }
+
+    #batch(pack: FontPack, material: Material) {
+        let byMaterial = this.#batches.get(pack)
+        if (!byMaterial) {
+            byMaterial = new Map()
+            this.#batches.set(pack, byMaterial)
+        }
+
+        let batch = byMaterial.get(material)
         if (!batch) {
-            batch = new FaceBatch({ pack, uniforms: this.uniforms, wireframe: this.#wireframe })
-            this.#batches.set(pack, batch)
+            batch = new FaceBatch({ pack, material, uniforms: this.uniforms, wireframe: this.#wireframe })
+            byMaterial.set(material, batch)
             this.#content.add(batch.mesh)
         }
         return batch
     }
 
+    // a batch nobody draws in any more: its mesh, buffers and text material go
+    #prune() {
+        for (const [pack, byMaterial] of this.#batches) {
+            for (const [material, batch] of byMaterial) {
+                if (!batch.isEmpty) continue
+                batch.destroy()
+                byMaterial.delete(material)
+            }
+            if (!byMaterial.size) this.#batches.delete(pack)
+        }
+    }
+
     #release(block: TextBlock) {
-        for (const batch of this.#batches.values()) batch.release(block)
+        for (const batch of this.#eachBatch()) batch.release(block)
+        this.#prune()
         block.isDrawn = false
     }
 
@@ -187,12 +246,14 @@ export default class TextLayer extends Group {
             return
         }
 
-        for (const [pack, batch] of this.#batches) {
-            if (!block.groups.has(pack)) batch.release(block)
+        const material = block.material ?? this.#material
+        for (const batch of this.#eachBatch()) {
+            if (batch.baseMaterial !== material || !block.groups.has(batch.pack)) batch.release(block)
         }
         for (const [pack, glyphs] of block.groups) {
-            this.#batch(pack).write(block, glyphs, block.doc.x, block.doc.y)
+            this.#batch(pack, material).write(block, glyphs, block.doc)
         }
+        this.#prune()
 
         block.isDrawn = true
         // hidden only after a successful measure, so a cold font never flashes empty
@@ -227,24 +288,36 @@ export default class TextLayer extends Group {
 
         for (let i = 0; i < blocks.length; i++) {
             const block = blocks[i]
+            const { doc } = block
             const x = rects[i].left
             const y = rects[i].top + scrollY
-            if (x === block.doc.x && y === block.doc.y) continue
+            if (x === doc.x && y === doc.y && rects[i].width === doc.width && rects[i].height === doc.height) continue
 
-            block.doc.x = x
-            block.doc.y = y
+            doc.x = x
+            doc.y = y
+            doc.width = rects[i].width
+            doc.height = rects[i].height
             if (!block.isDrawn) continue
-            for (const [pack, glyphs] of block.groups) this.#batches.get(pack)?.move(block, glyphs, x, y)
+            const material = block.material ?? this.#material
+            for (const pack of block.groups.keys()) this.#batches.get(pack)?.get(material)?.move(block, doc)
         }
     }
 
-    // start drawing an element's text; returns its block (the same one if it's already tracked)
+    // start drawing an element's text; returns its block. Tracking it again with another `material` swaps it
     track(target: string | HTMLElement, options?: TextBlockOptions) {
         const el = typeof target === 'string' ? qs(target) : target
         if (!el) throw new Error(`[Keemera] TextLayer.track: no element found for "${target}"`)
 
+        assertTextMaterial(options?.material)
+
         const existing = this.#blocks.get(el)
-        if (existing) return existing
+        if (existing) {
+            if (options && 'material' in options && options.material !== existing.material) {
+                existing.material = options.material
+                this.#dirty.add(existing)
+            }
+            return existing
+        }
 
         const block = new TextBlock(el, options)
         this.#blocks.set(el, block)
@@ -300,7 +373,7 @@ export default class TextLayer extends Group {
         const { viewport } = this.#store
         this.#content.position.x = -viewport.width * 0.5
         this.#content.position.y = viewport.height * 0.5 + viewport.scroll.y
-        this.uniforms.uDpr.value = viewport.dpr
+        this.uniforms.uKeemeraDpr.value = viewport.dpr
         this.#rectsStale = true
     }
 
@@ -312,7 +385,9 @@ export default class TextLayer extends Group {
         this.#selectionStyle?.remove()
 
         for (const block of this.#blocks.values()) block.destroy()
-        for (const batch of this.#batches.values()) batch.destroy()
+        for (const batch of this.#eachBatch()) batch.destroy()
+        // the user's materials are theirs
+        this.#defaultMaterial?.dispose()
 
         this.#content.removeFromParent()
         this.#blocks.clear()
