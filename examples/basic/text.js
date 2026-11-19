@@ -1,8 +1,8 @@
 import { gsap } from 'gsap'
 import Lenis from 'lenis'
-import { AmbientLight, Color, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, PointLight, ShaderMaterial } from 'three'
+import { AmbientLight, Color, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, PlaneGeometry, PointLight, ShaderMaterial, Vector4, WebGLRenderTarget } from 'three'
 import Keemera, { EVENTS, PRIORITY, Shepherd } from '@dghez/keemera'
-import { MouseFluid, PlaneBackground, TextLayer } from '@dghez/keemera/shards'
+import { MouseFluid, PlaneBackground, TextLayer, Tracker } from '@dghez/keemera/shards'
 
 import './style.css'
 
@@ -542,6 +542,210 @@ shepherd.add(text)
 app.events.on(EVENTS.APP_TICK, state => shepherd.update(state))
 app.events.on(EVENTS.APP_RESIZE, state => shepherd.resize(state))
 app.events.on(EVENTS.APP_DESTROY, () => shepherd.destroy())
+
+/* ───────── Plate IX: Oniric, god rays from the word ─────────
+   The word has its own TextLayer, so it can be rendered alone into a small mask framed on the word itself (same
+   aspect, a quarter of its size: every texel is spent on the word, even the parts scrolled off screen). A plane
+   behind the section marches each pixel toward the light (the store's mouse) through that mask: wherever the word
+   stands between the pixel and the light, ink accumulates, so the word throws rays away from the hand. Nothing runs
+   while the section is off screen: the plane is a Tracker, whose isActive follows an IntersectionObserver */
+
+const oniric = document.querySelector('[data-oniric]')
+
+// the word spans the page: size it to the section's width once fonts are in, and on every resize
+const fitOniric = () => {
+    oniric.style.fontSize = '20vw'
+    const style = getComputedStyle(oniric)
+    const available = oniric.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    const range = document.createRange()
+    range.selectNodeContents(oniric)
+    oniric.style.fontSize = `${(20 * available) / range.getBoundingClientRect().width}vw`
+}
+await document.fonts.ready
+fitOniric()
+app.events.on(EVENTS.APP_RESIZE, fitOniric)
+
+// a wide cull margin: the mask frames the whole word, even the parts outside the viewport
+const oniricText = new TextLayer({ store, cullMargin: 4000 })
+oniricText.track(oniric)
+app.scene.add(oniricText)
+shepherd.add(oniricText)
+
+const MASK_SCALE = 0.25
+// room around the element for ink that overhangs its box (italic tails, accents), css px
+const MASK_MARGIN = 24
+const mask = new WebGLRenderTarget(1, 1, { depthBuffer: false })
+// the word's frame on screen, css px, top-left origin; and as screen uv (x, y bottom, w, h) for the shader
+const frame = { x: 0, y: 0, width: 1, height: 1 }
+const maskRect = new Vector4()
+
+// from the rect the layer already keeps (document px): no DOM reads per frame
+const updateFrame = () => {
+    const block = oniricText.blocks[0]
+    if (!block) return false
+    const { doc } = block
+    const { width, height, scroll } = store.viewport
+    frame.x = doc.x - MASK_MARGIN
+    frame.y = doc.y - scroll.y - MASK_MARGIN
+    frame.width = doc.width + MASK_MARGIN * 2
+    frame.height = doc.height + MASK_MARGIN * 2
+    maskRect.set(frame.x / width, 1 - (frame.y + frame.height) / height, frame.width / width, frame.height / height)
+    return true
+}
+
+// same aspect as the word, a quarter of its size
+const sizeMask = () => {
+    if (!updateFrame()) return
+    mask.setSize(Math.max(1, Math.round(frame.width * MASK_SCALE)), Math.max(1, Math.round(frame.height * MASK_SCALE)))
+}
+app.events.on(EVENTS.APP_RESIZE, sizeMask)
+
+// visibility only: the section's Tracker knows when it's on screen (IntersectionObserver)
+const oniricGate = new Tracker({ store, tracker: '[data-oniric-section]', preventUpdatePosition: true })
+shepherd.add(oniricGate)
+
+const raysMaterial = new ShaderMaterial({
+    uniforms: {
+        uMask: { value: mask.texture },
+        uMaskRect: { value: maskRect },
+        uMouse: store.uniforms.mouse.smooth,
+        uResolution: store.uniforms.resolution,
+        // the knobs: steps per ray (cost), how far toward the light they reach, how fast each step fades
+        uSamples: { value: 32 },
+        uLength: { value: 0.45 },
+        uDecay: { value: 0.965 },
+        uStrength: { value: 2.2 },
+        uInk: { value: INK },
+    },
+    vertexShader: plain,
+    fragmentShader: /* glsl */`
+        uniform sampler2D uMask;
+        // where the mask sits on screen: x, y (bottom), width, height, in screen uv
+        uniform vec4 uMaskRect;
+        uniform vec2 uMouse;
+        uniform vec3 uResolution;
+        uniform int uSamples;
+        uniform float uLength;
+        uniform float uDecay;
+        uniform float uStrength;
+        uniform vec3 uInk;
+
+        float hash12(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / (uResolution.xy * uResolution.z);
+            vec2 light = uMouse * 0.5 + 0.5;
+            // the ray from this pixel toward the light, as far as it reaches: uv + ray * t, t in 0..1
+            vec2 ray = (light - uv) * uLength + 1e-6;
+
+            // only the part of the ray inside the word's frame can find ink (slab test against the rect)
+            vec2 a = (uMaskRect.xy - uv) / ray;
+            vec2 b = (uMaskRect.xy + uMaskRect.zw - uv) / ray;
+            vec2 near = min(a, b);
+            vec2 far = max(a, b);
+            float t0 = max(max(near.x, near.y), 0.0);
+            float t1 = min(min(far.x, far.y), 1.0);
+
+            float ink = 0.0;
+            if (t0 < t1) {
+                // march only the steps that fall in the frame; a per-pixel offset hides the banding of few steps
+                float count = float(uSamples);
+                float jitter = hash12(gl_FragCoord.xy);
+                int first = int(floor(t0 * count));
+                int last = int(ceil(t1 * count));
+                for (int i = 0; i < 64; i++) {
+                    if (i > last || i >= uSamples) break;
+                    if (i < first) continue;
+                    vec2 m = (uv + ray * ((float(i) + jitter) / count) - uMaskRect.xy) / uMaskRect.zw;
+                    if (m.x >= 0.0 && m.y >= 0.0 && m.x <= 1.0 && m.y <= 1.0) ink += texture(uMask, m).a * pow(uDecay, float(i));
+                }
+                ink = ink / count * uStrength;
+            }
+
+            gl_FragColor = vec4(uInk, clamp(ink, 0.0, 1.0));
+
+            #include <colorspace_fragment>
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+})
+
+// the rays' plane only covers where rays can land, recomputed each frame from the word's frame and the light
+const rays = new Mesh(new PlaneGeometry(1, 1), raysMaterial)
+// under the word, which sits on the same plane
+rays.renderOrder = -1
+rays.frustumCulled = false
+app.scene.add(rays)
+
+// a pixel P picks up ink if the word lies within uLength of the way from P to the light L: so rays land in the
+// word's frame scaled away from L by up to 1 / (1 - uLength). That box, clipped to the section and the screen
+const fitRays = () => {
+    const { width, height, scroll } = store.viewport
+    const { smooth } = store.mouse
+    const lx = (smooth.x + 1) * 0.5 * width
+    const ly = (1 - smooth.y) * 0.5 * height
+    const k = 1 / (1 - raysMaterial.uniforms.uLength.value)
+
+    const x0 = frame.x
+    const y0 = frame.y
+    const x1 = frame.x + frame.width
+    const y1 = frame.y + frame.height
+    let left = Math.min(x0, lx + (x0 - lx) * k)
+    let right = Math.max(x1, lx + (x1 - lx) * k)
+    let top = Math.min(y0, ly + (y0 - ly) * k)
+    let bottom = Math.max(y1, ly + (y1 - ly) * k)
+
+    const sectionTop = oniricGate.rect.top + oniricGate.offset.y - scroll.y
+    left = Math.max(left, oniricGate.rect.left, 0)
+    right = Math.min(right, oniricGate.rect.left + oniricGate.rect.width, width)
+    top = Math.max(top, sectionTop, 0)
+    bottom = Math.min(bottom, sectionTop + oniricGate.rect.height, height)
+    if (right <= left || bottom <= top) return false
+
+    // screen px, y down → world px from the center, y up (camera.useDomSize)
+    rays.scale.set(right - left, bottom - top, 1)
+    rays.position.set((left + right) * 0.5 - width * 0.5, height * 0.5 - (top + bottom) * 0.5, 0)
+    return true
+}
+
+const clearColor = new Color()
+app.events.on(EVENTS.WEBGL_BEFORE_RENDER, () => {
+    rays.visible = false
+    if (!oniricGate.isActive || !updateFrame()) return
+    rays.visible = fitRays()
+    if (!rays.visible) return
+
+    // the word's frame changes size when it's measured again (fonts, resize): follow it
+    const w = Math.max(1, Math.round(frame.width * MASK_SCALE))
+    const h = Math.max(1, Math.round(frame.height * MASK_SCALE))
+    if (w !== mask.width || h !== mask.height) mask.setSize(w, h)
+
+    // the word alone, into the mask: the camera frames only the word, a window of the full view
+    const { gl, camera } = app
+    const { width, height } = store.viewport
+    const target = gl.getRenderTarget()
+    const alpha = gl.getClearAlpha()
+    gl.getClearColor(clearColor)
+    camera.setViewOffset(width, height, frame.x, frame.y, frame.width, frame.height)
+
+    gl.setRenderTarget(mask)
+    gl.setClearColor(0x000000, 0)
+    gl.clear()
+    gl.render(oniricText, camera)
+    camera.clearViewOffset()
+    gl.setRenderTarget(target)
+    gl.setClearColor(clearColor, alpha)
+})
+app.events.on(EVENTS.APP_DESTROY, () => {
+    mask.dispose()
+    rays.geometry.dispose()
+    raysMaterial.dispose()
+})
 
 // the fluid only feeds Plate VI: simulate it only while that plate is on screen
 let fluidVisible = false
