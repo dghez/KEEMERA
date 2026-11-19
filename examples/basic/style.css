@@ -115,3 +115,12 @@ a:hover {
     background: var(--color-rubric);
     color: var(--color-paper);
 }
+
+/* fleuron between two rules, between plates (text page) */
+.ornament {
+    @apply flex items-center justify-center gap-5 px-[6vw] font-fell text-[28px] leading-none text-rubric;
+}
+
+.ornament span {
+    @apply h-px max-w-[220px] flex-1 bg-rule;
+}

@@ -3,132 +3,338 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>KEEMERA · text</title>
+        <title>KEEMERA · Liber Litterarum</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <!-- only the monospace comes from Google: it's never drawn by the GPU -->
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
         <style>
             /* the same files the bake read (npm run fonts): the GPU copy matches the DOM exactly */
-            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
-            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: block; }
-            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: block; }
-            @font-face { font-family: 'Geist'; src: url('/fonts/Geist-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: block; }
-
-            html.lenis, html.lenis body { height: auto; }
-            html, body { margin: 0; background: #f2f0ea; color: #1c1b18; font: 17px/1.5 'Geist', sans-serif; -webkit-font-smoothing: antialiased; }
-            ::selection { background: #1c1b18; color: #f2f0ea; }
-            /* behind the page, like the other examples: selected text shows its DOM copy over the highlight */
-            .gl { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-            .gl canvas { display: block; width: 100%; height: 100%; }
-
-            main { position: relative; z-index: 1; padding: 0 6vw 30vh; }
-            section { padding: 12vh 0 0; max-width: 1100px; }
-            .note { color: #8a867b; font-size: 13px; letter-spacing: 0.02em; margin: 0 0 18px; }
-            .note code { font-family: ui-monospace, monospace; }
-
-            h1 { margin: 0; font-size: clamp(64px, 12vw, 180px); line-height: 0.9; font-weight: 700; letter-spacing: -0.05em; }
-            .lead { margin: 28px 0 0; max-width: 34ch; font-size: clamp(22px, 2.4vw, 32px); line-height: 1.3; letter-spacing: -0.01em; }
-            .lead em { color: #a3392a; }
-            .lead strong { font-weight: 700; }
-            .justify { margin: 0; max-width: 62ch; text-align: justify; font-size: 17px; }
-            .label { margin: 0 0 14px; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.22em; color: #5a574f; }
-            .medium { font-weight: 500; }
-            .stress { columns: 3 280px; column-gap: 32px; font-size: 14px; line-height: 1.45; color: #3d3b35; }
-            .stress p { margin: 0 0 12px; break-inside: avoid; }
-
-            .material { margin: 0; max-width: 40ch; font-size: clamp(22px, 2.4vw, 32px); line-height: 1.3; letter-spacing: -0.01em; }
-            /* MeshBasicMaterial multiplies the DOM color by material.color: white lets the material's color through */
-            .material.is-white { color: #fff; }
-            .material.is-large { max-width: 22ch; font-size: clamp(40px, 6vw, 80px); line-height: 1.1; letter-spacing: -0.02em; }
-            .fluid-text { margin: 0; font-size: clamp(64px, 11vw, 170px); line-height: 0.92; font-weight: 700; letter-spacing: -0.045em; }
-            .columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
-            .columns p { margin: 0 0 14px; font-size: 19px; line-height: 1.45; }
-            @media (max-width: 760px) { .columns { grid-template-columns: 1fr; } }
-
-            .pin { height: 160vh; position: relative; border-left: 1px dashed #c9c5ba; padding-left: 24px; }
-            .pin p { position: sticky; top: 24px; margin: 0; font-size: 28px; font-weight: 500; letter-spacing: -0.02em; }
-
-            .hud { position: fixed; right: 12px; bottom: 12px; z-index: 3; background: #1c1b18; color: #f2f0ea; padding: 10px 12px; font: 12px/1.5 ui-monospace, monospace; white-space: pre; }
+            @font-face { font-family: 'IM Fell English'; src: url('/fonts/IMFellEnglish-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+            @font-face { font-family: 'IM Fell English'; src: url('/fonts/IMFellEnglish-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: block; }
+            @font-face { font-family: 'IM Fell English SC'; src: url('/fonts/IMFellEnglishSC-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+            @font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond-Variable.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+            @font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond-Italic-Variable.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: block; }
         </style>
     </head>
     <body>
-        <div class="gl" data-gl><canvas></canvas></div>
+        <!-- renderer host, behind the page: selected text shows its DOM copy over the highlight -->
+        <div class="pointer-events-none fixed inset-0 z-0" data-gl>
+            <canvas class="block size-full"></canvas>
+        </div>
 
-        <main>
-            <section>
-                <p class="note">TextLayer · every glyph below is drawn by WebGL from Geist's outlines (Slug), where the browser laid it out. Select it, resize, add <code>?compare</code>, press W for the glyph boxes.</p>
-                <h1 data-text>Keemera</h1>
-                <p class="lead" data-text>Text the browser lays out, <em>drawn on the GPU</em> straight from <strong>quadratic Bézier</strong> outlines: sharp at any size, kerned and wrapped exactly like the DOM.</p>
-            </section>
+        <header class="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-baseline justify-between gap-4 px-[6vw] py-[22px] font-fell-sc text-[17px] tracking-[0.14em]">
+            <span data-text="live">Keemera</span>
+            <span class="text-muted" data-text="live">Liber Litterarum</span>
+            <span class="font-mono text-[13px] tracking-[0.04em]" data-scroll-meter>000</span>
+        </header>
 
-            <section>
-                <p class="label" data-text>Justified · text-transform · sup</p>
-                <p class="justify" data-text>Nothing here is laid out twice. The browser breaks the lines, applies kerning and letter-spacing, justifies the block and sets E = mc<sup>2</sup>; a Range per character reads each pen position back. The GPU only rasterises: <span class="medium">one instanced draw for every element of a font pack and material</span>, so scrolling moves one transform and a re-measure happens only when an element’s size, text or font changes. Ligatures are off on tracked elements, so “fi” and “fl” draw the same glyphs as the DOM.</p>
-            </section>
-
-            <section>
-                <p class="label">Left to the DOM</p>
-                <p class="lead" data-text>Characters outside the baked subset ✦ 日本語 keep the whole element in the DOM.</p>
-            </section>
-
-            <section>
-                <p class="label" data-text>Materials · MeshBasicMaterial</p>
-                <p class="material is-white" data-text="basic">Any built-in material works: this block draws with a MeshBasicMaterial, and its color tints the DOM color.</p>
-            </section>
-
-            <section>
-                <p class="label" data-text>Materials · ShaderMaterial</p>
-                <p class="material" data-text="passthrough">A ShaderMaterial that does nothing at all: it writes the DOM color, and still claims to be a ShaderMaterial.</p>
-            </section>
-
-            <section>
-                <p class="label" data-text>Materials · ShaderMaterial · glyph UV</p>
-                <p class="material is-large" data-text="glyph-uv">Every letter is a rectangle: this shader paints each quad with its own UV, draws the glyph on top and pushes the letters away from the mouse.</p>
-            </section>
-
-            <section>
-                <p class="label" data-text>Materials · ShaderMaterial · MouseFluid</p>
-                <p class="fluid-text" data-text="fluid">Stir the color with your mouse</p>
-            </section>
-
-            <section>
-                <p class="label" data-text>Materials · ShaderMaterial · push away from the mouse</p>
-                <div class="columns">
-                    <div>
-                        <p class="label" data-text>Letter by letter</p>
-                        <p data-text="push-glyph">Every glyph is its own piece. The vertex shader moves each quad away from the pointer, around the center of the glyph’s ink.</p>
-                        <p data-text="push-glyph">Coverage is computed from the glyph’s own coordinates, so a moved quad still draws a sharp glyph, however far it travels.</p>
-                        <p data-text="push-glyph">The color follows the same force: a varying carries how far the glyph was pushed, and the fragment shader mixes toward the accent.</p>
-                        <p data-text="push-glyph">Move slowly along a line and the letters part like water, then settle back as the eased mouse leaves them behind.</p>
-                        <p data-text="push-glyph">Nothing here touches the CPU per frame: the store’s mouse and resolution are shared uniforms, read directly by the shader.</p>
+        <main class="relative z-10 font-serif text-[19px] leading-[1.5] text-ink">
+            <!-- Plate I · Title -->
+            <section class="box-border grid min-h-screen grid-cols-1 items-center gap-[clamp(32px,5vw,72px)] px-[6vw] pt-28 pb-16 md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]">
+                <div class="flex flex-col gap-[26px]">
+                    <span class="eyebrow" data-text>Incipit · Plate I · Of letters, drawn twice</span>
+                    <!-- the title dissolves into ink grain and re-forms as its English, on loop, like the homepage's: here on the GPU -->
+                    <div class="relative">
+                        <h1 class="m-0 font-fell text-[clamp(80px,11vw,180px)] font-normal leading-[0.84]" data-text="title-latin">Liber<br /><span class="italic">Litterarum</span></h1>
+                        <p class="pointer-events-none absolute inset-0 m-0 select-none font-fell text-[clamp(80px,11vw,180px)] leading-[0.84]" aria-hidden="true" data-text="title-english">Book of<br /><span class="italic">Letters</span></p>
                     </div>
-                    <div>
-                        <p class="label" data-text>Word by word</p>
-                        <p data-text="push-word">Here every glyph of a word moves by the same amount, measured from the word’s center, so words travel as one piece.</p>
-                        <p data-text="push-word">Same buffers and same draw call as the letters, only a different center in the shader: keemeraWordCenter instead of the glyph’s.</p>
-                        <p data-text="push-word">Long words like synchronisation, typographically or straightforwardness hold together while the short ones scatter around them.</p>
-                        <p data-text="push-word">A word ends at a space or at a line break, so the two halves of a word that wraps would move as two pieces.</p>
-                        <p data-text="push-word">Colors shift word by word too: every glyph of a word shares one force, so a word changes color as a whole.</p>
+                    <p class="m-0 max-w-[34ch] font-fell text-[clamp(22px,2.2vw,28px)] italic leading-[1.3] text-pretty" data-text>The browser sets every letter in its place. The canvas behind it inks each one again, from the outlines of the font.</p>
+                    <div class="flex items-center gap-3.5 font-fell-sc text-[16px] tracking-[0.12em] text-muted">
+                        <span class="h-px w-11 bg-ink"></span>
+                        <span data-text>Select it · resize it · then scroll</span>
                     </div>
-                    <div>
-                        <p class="label" data-text>Line by line</p>
-                        <p data-text="push-line">And here whole lines slide, measured from each line’s center. The browser decides where the lines break.</p>
-                        <p data-text="push-line">Resize the window: the lines reflow, the layer measures them again, and their centers follow without any extra code.</p>
-                        <p data-text="push-line">Lines are found by comparing the glyph boxes the browser reports: a new line starts where a glyph stops overlapping the last one.</p>
-                        <p data-text="push-line">Hover near the middle of a paragraph and the lines above and below fan out, colored by how far each one moved.</p>
-                        <p data-text="push-line">The same three centers are there for any effect: rotate a word around its middle, stagger lines, or scale letters in place.</p>
+                    <dl class="bestiary-marks max-w-[420px] whitespace-nowrap">
+                        <dt data-text>Glyphs</dt><dd data-volume="glyphs">–</dd>
+                        <dt data-text>Draws</dt><dd data-volume="draws">–</dd>
+                        <dt data-text>Faces</dt><dd data-volume="faces">–</dd>
+                        <dt data-text>Scribe</dt><dd data-text>Slug, after Lengyel</dd>
+                    </dl>
+                </div>
+                <figure class="m-0 flex flex-col items-center gap-3">
+                    <div class="plate-frame w-full max-w-[620px]">
+                        <img class="block aspect-[1984/2156] w-full mix-blend-multiply" src="/keemera-3.jpeg" alt="Engraving of a gorgon with a serpent's tail, seated on rocks by the sea, framed by chains and roses" />
                     </div>
+                    <figcaption class="fig-caption w-full max-w-[620px]">
+                        <span data-text>Fig. 1. The Gorgon, who reads in the margins</span><span data-text>The plate is a picture; the words are not</span>
+                    </figcaption>
+                </figure>
+            </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate II · Fidelity -->
+            <section class="grid items-center gap-x-[6vw] gap-y-10 px-[6vw] py-[12vh] md:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
+                <div class="flex max-w-[420px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate II · Fidelity</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>Two hands, one line.</h2>
+                    <p class="bestiary-latin m-0" data-text>Duae manus, una linea.</p>
+                    <p class="m-0 text-body text-pretty" data-text>The page’s own copy is written in rubric, above. The canvas inks the same line beneath it. Where both hands agree you see a single stroke; drift would leave a red fringe.</p>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Material</dt><dd data-text>The default, unlit</dd>
+                        <dt data-text>Draws</dt><dd data-text>One for the whole page</dd>
+                        <dt data-text>Fringe</dt><dd data-text>None to be found</dd>
+                    </dl>
+                </div>
+                <figure class="m-0 flex flex-col gap-2.5">
+                    <div class="plate-frame">
+                        <div class="relative border border-rule px-10 py-12">
+                            <p class="m-0 font-fell text-[clamp(32px,4.2vw,58px)] leading-[1.1]" data-text>Here kerning, justification and the long tail of the y fall where the scribe set them.</p>
+                            <!-- an untracked copy over the GPU one: the page itself, in rubric -->
+                            <p class="pointer-events-none absolute inset-0 m-0 px-10 py-12 font-fell text-[clamp(32px,4.2vw,58px)] leading-[1.1] text-rubric/60 select-none" aria-hidden="true">Here kerning, justification and the long tail of the y fall where the scribe set them.</p>
+                        </div>
+                    </div>
+                    <figcaption class="fig-caption"><span data-text>Fig. 2. The page in rubric, the canvas in ink</span><span data-text>No fringe at any size</span></figcaption>
+                </figure>
+            </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate III · Anatomy -->
+            <section class="grid items-center gap-x-[6vw] gap-y-10 px-[6vw] py-[12vh] md:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
+                <figure class="m-0 flex flex-col gap-2.5">
+                    <div class="plate-frame">
+                        <div class="flex flex-col gap-6 border border-rule p-10">
+                            <div class="flex flex-wrap items-end gap-x-12 gap-y-4">
+                                <p class="m-0 font-fell text-[clamp(88px,10vw,150px)] leading-none" data-text="glyph-uv">Quill</p>
+                                <p class="m-0 font-fell text-[clamp(88px,10vw,150px)] leading-none" data-text="glyph-box">Ink</p>
+                            </div>
+                            <div class="flex flex-wrap items-end gap-x-10 gap-y-4">
+                                <p class="m-0 font-fell text-[clamp(64px,7vw,108px)] leading-none italic" data-text="glyph-box">Vellum</p>
+                                <p class="m-0 font-fell text-[clamp(64px,7vw,108px)] leading-none italic" data-text="glyph-uv">Gall</p>
+                            </div>
+                            <p class="m-0 font-fell-sc text-[clamp(40px,4.4vw,68px)] leading-none tracking-[0.08em]" data-text="glyph-uv">Rubric &amp; Folio</p>
+                            <p class="m-0 font-fell text-[clamp(22px,2vw,28px)] leading-[1.35] italic" data-text="glyph-box">Every leaf above is one instance and four corners; the outline inside it is read from the font, one pixel at a time.</p>
+                        </div>
+                    </div>
+                    <figcaption class="fig-caption"><span data-text>Fig. 3. Each letter its own small leaf</span><span data-text>Painted by its UV · its bounds in rubric</span></figcaption>
+                </figure>
+                <div class="order-first flex max-w-[420px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate III · Anatomy</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>Every letter is a leaf.</h2>
+                    <p class="bestiary-latin m-0" data-text>Omnis littera folium est.</p>
+                    <p class="m-0 text-body text-pretty" data-text>Beneath each glyph lies a small rectangle, cut to its ink. Painted with its own coordinates, red across and green upward, the letter is laid on top. Pass the hand over it.</p>
+                    <code class="font-mono text-[14px] text-muted">keemeraCoverage = 1.0</code>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Material</dt><dd data-text>A ShaderMaterial</dd>
+                        <dt data-text>Reads</dt><dd data-text>The glyph's own UV</dd>
+                        <dt data-text>Temper</dt><dd data-text>Shies from the hand</dd>
+                    </dl>
                 </div>
             </section>
 
-            <section class="pin">
-                <p data-text="live">CSS sticky, tracked with { live: true }</p>
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate IV · Materials -->
+            <section class="flex flex-col gap-9 px-[6vw] py-[12vh]">
+                <div class="flex max-w-[640px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate IV · Materials</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>Three inks, one press.</h2>
+                    <p class="bestiary-latin m-0" data-text>Tria atramenta, unum prelum.</p>
+                    <p class="m-0 text-body text-pretty" data-text>Any material of three.js may carry the letters, one to each element. The press wraps it and adds the outlines; the shader keeps its own hand.</p>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Inks</dt><dd data-text>Three, side by side</dd>
+                        <dt data-text>Draws</dt><dd data-text>One for each ink</dd>
+                        <dt data-text>Found</dt><dd data-text>track(el, { material })</dd>
+                    </dl>
+                </div>
+                <div class="grid gap-8 md:grid-cols-3">
+                    <figure class="m-0 flex flex-col gap-2.5">
+                        <div class="plate-frame flex-1"><div class="flex min-h-[220px] items-end border border-rule px-7 py-8">
+                            <!-- MeshBasicMaterial multiplies the DOM color by material.color: white lets the woad through -->
+                            <p class="m-0 font-fell text-[42px] leading-none text-white" data-text="basic">In woad, by the material’s colour</p>
+                        </div></div>
+                        <figcaption class="fig-caption"><span data-text>Fig. 4a. MeshBasicMaterial</span></figcaption>
+                    </figure>
+                    <figure class="m-0 flex flex-col gap-2.5">
+                        <div class="plate-frame flex-1"><div class="flex min-h-[220px] items-end border border-rule px-7 py-8">
+                            <p class="m-0 font-fell text-[42px] leading-none" data-text="passthrough">A shader that only copies</p>
+                        </div></div>
+                        <figcaption class="fig-caption"><span data-text>Fig. 4b. ShaderMaterial, doing nothing</span></figcaption>
+                    </figure>
+                    <figure class="m-0 flex flex-col gap-2.5">
+                        <div class="plate-frame flex-1"><div class="flex min-h-[220px] items-end border border-rule px-7 py-8">
+                            <p class="m-0 font-fell text-[42px] leading-none" data-text="gradient">Rubric fading into ink</p>
+                        </div></div>
+                        <figcaption class="fig-caption"><span data-text>Fig. 4c. ShaderMaterial, across the uv</span></figcaption>
+                    </figure>
+                </div>
             </section>
 
-            <section>
-                <p class="label" data-text>Stress · about ten thousand glyphs</p>
-                <div class="stress" data-stress></div>
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate V · Repel -->
+            <section class="flex flex-col gap-9 px-[6vw] py-[12vh]">
+                <div class="flex max-w-[640px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate V · Of the hand that scatters</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>Letters flee the hand.</h2>
+                    <p class="bestiary-latin m-0" data-text>Litterae manum fugiunt.</p>
+                    <p class="m-0 text-body text-pretty" data-text>Pass the cursor over the columns. Each gives way about its own centre, by letter, by word or by line, and the farther it is driven the deeper it turns to rubric.</p>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Centres</dt><dd data-text>Letter, word and line</dd>
+                        <dt data-text>The hand</dt><dd data-text>The store's own mouse</dd>
+                        <dt data-text>CPU</dt><dd data-text>Untouched, every frame</dd>
+                    </dl>
+                </div>
+                <div class="grid border-y border-ink md:grid-cols-3">
+                    <article class="flex flex-col gap-3.5 py-7 md:pr-7">
+                        <span class="eyebrow !text-[15px]" data-text>I · By the letter</span>
+                        <p class="m-0 text-[21px] text-body" data-text="push-glyph">The letters part like water about the hand, and close again once it has passed. Each is its own small piece, pushed from the centre of its ink.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-glyph">The outline is read from the letter’s own coordinates, so a letter driven far from home is still drawn sharp.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-glyph">Nothing is reckoned on the CPU: the hand is the store’s own mouse, eased, and shared with the shader as it stands.</p>
+                    </article>
+                    <article class="flex flex-col gap-3.5 border-rule py-7 md:border-l md:px-7">
+                        <span class="eyebrow !text-[15px]" data-text>II · By the word</span>
+                        <p class="m-0 text-[21px] text-body" data-text="push-word">Each word holds together and travels as a single piece, as words should, measured from the middle of the word.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-word">Long words, like illumination or palimpsest, keep their shape while the small ones scatter around them.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-word">A word ends at a space or at the end of a line, so a word the line breaks in two is two pieces.</p>
+                    </article>
+                    <article class="flex flex-col gap-3.5 border-rule py-7 md:border-l md:pl-7">
+                        <span class="eyebrow !text-[15px]" data-text>III · By the line</span>
+                        <p class="m-0 text-[21px] text-body" data-text="push-line">Whole lines slide where the browser chose to break them, measured from the middle of each line.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-line">Narrow the window: the lines run again, the layer reads them anew, and their centres follow without a word of code.</p>
+                        <p class="m-0 text-[21px] text-body" data-text="push-line">The same three centres serve any effect: turn a word about its middle, stagger the lines, or swell each letter in place.</p>
+                    </article>
+                </div>
             </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate VI · The folio: the hand scrambles the letters -->
+            <section class="grid gap-x-[6vw] gap-y-10 px-[6vw] py-[12vh] md:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
+                <div class="flex max-w-[420px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate VI · Of the hand that confounds</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>The letters forget themselves.</h2>
+                    <p class="bestiary-latin m-0" data-text>Litterae sui obliviscuntur.</p>
+                    <p class="m-0 text-body text-pretty" data-text>Drag the hand across the folio. Where its current runs, each letter loses its name and tries on others from the same fount, faster where the stroke is strong, then remembers as the trail fades.</p>
+                    <code class="font-mono text-[14px] text-muted">keemeraSetGlyph(index)</code>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Current</dt><dd data-text>MouseFluid, read per glyph</dd>
+                        <dt data-text>Confounds</dt><dd data-text>keemeraSetGlyph</dd>
+                        <dt data-text>Blurs</dt><dd data-text>keemeraCoverageAt</dd>
+                        <dt data-text>Bends</dt><dd data-text>MouseFluid.distortionShader</dd>
+                    </dl>
+                </div>
+                <figure class="m-0 flex flex-col gap-2.5">
+                    <div class="plate-frame">
+                        <div class="border border-rule px-[clamp(24px,4vw,56px)] py-[clamp(28px,4vw,52px)]">
+                            <div class="columns-[260px_2] gap-10 font-fell text-[clamp(19px,1.6vw,23px)] leading-[1.45] [&_p]:mb-3.5">
+                                <p class="text-justify" data-text="folio"><span class="float-left mt-1 mr-3 border-4 border-double border-rubric px-2.5 pb-1 font-fell text-[clamp(64px,6vw,92px)] leading-[0.9] text-rubric">H</span>ere the scribe set down his pen at the close of the day, and left the folio open on the desk. Every letter he laid is still a letter of the page: you may select it, copy it, or read it aloud.</p>
+                                <p class="text-justify" data-text="folio">The canvas behind the page inks each one again, and it alone answers the hand. Stir it, and the letters under the current forget which they were, and draw whatever the fount offers them.</p>
+                                <p class="text-justify" data-text="folio">The page underneath never changes. Leave it be, and in a breath the trail fades, each letter finds its name again, and the words are as the scribe left them.</p>
+                                <p class="text-justify" data-text="folio">So it was in the scriptorium of old, where a careless sleeve or a draught from the door could unsettle a page not yet dry, and the brothers would wait, and watch, and let the vellum be still before they turned the leaf.</p>
+                                <p class="text-justify" data-text="folio">No letter here is lost, only mislaid for a moment. Each knows its own name and its own place on the line, and comes back to both of its own accord, one after another, as quietly as monks returning to their stalls at the end of the office.</p>
+                                <p class="text-justify" data-text="folio">The novices liked to test it. They would pass a hand over the open book, quick as a swallow, and watch the lines dissolve into strangers' letters, then hold their breath while the page found its own words again, slowly, a letter here and a letter there.</p>
+                                <p class="text-justify" data-text="folio">The old librarian never scolded them for it. A book that forgets itself for a moment, he would say, only shows how firmly it remembers; and he would wait with them until the last letter had come home before he closed the boards.</p>
+                                <p class="text-justify" data-text="folio"><span class="italic">Explicit</span> the folio, which keeps every word, however the hand confounds it.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <figcaption class="fig-caption"><span data-text>Fig. 6. A folio, and the hand upon it</span><span data-text>MouseFluid picks when, the fount picks what</span></figcaption>
+                </figure>
+                <figure class="m-0 flex flex-col gap-2.5 md:col-start-2">
+                    <div class="plate-frame">
+                        <div class="border border-rule px-[clamp(24px,4vw,56px)] py-[clamp(28px,4vw,52px)]">
+                            <div class="flex flex-col gap-4 font-fell text-[clamp(24px,2.4vw,32px)] leading-[1.3] italic">
+                                <p class="m-0" data-text="breath">Breathe on the glass that keeps the page, and the words go soft beneath it, grain by grain, as if seen through a winter window; wait, and the breath lifts, and the letters come back sharp.</p>
+                                <p class="m-0" data-text="breath">The scribes kept their finest books under glass in the cold months, and read them by candle with their breath held, for a sigh too near the case would cloud a whole line before it could be read.</p>
+                                <p class="m-0" data-text="breath">Here the cloud follows the hand and drifts with it, as fog drifts over water, and thins at the edges first, until only the grain of it is left, and then not even that.</p>
+                                <p class="m-0" data-text="breath">Look into the mist while it lasts: every speck of it is a piece of a letter, scattered a little way along the hand's path, and each frame scatters them anew, so the fog seems to breathe of its own accord before it clears.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <figcaption class="fig-caption"><span data-text>Fig. 6b. Breath upon the glass</span><span data-text>keemeraCoverageAt, smeared along the current</span></figcaption>
+                </figure>
+                <figure class="m-0 flex flex-col gap-2.5 md:col-start-2">
+                    <div class="plate-frame">
+                        <div class="border border-rule px-[clamp(24px,4vw,56px)] py-[clamp(28px,4vw,52px)]">
+                            <div class="flex flex-col gap-4 font-fell text-[clamp(24px,2.4vw,32px)] leading-[1.3]">
+                                <p class="m-0" data-text="warp">Lay the page in a basin and draw a finger through the water: the letters bend with the current and stream after the hand, and when the water stills they lie as straight as the scribe set them.</p>
+                                <p class="m-0" data-text="warp">Look closely at the edges of each stroke while it moves. The red and the blue run a little ahead of the black and a little behind it, as light does when it passes through a bowl of water or an old pane of glass.</p>
+                                <p class="m-0" data-text="warp">The bend is the same one that troubles the plates of the homepage, read by every pixel of every letter, and it leaves no mark behind: the outlines are drawn afresh each frame from the font itself.</p>
+                                <p class="m-0" data-text="warp">Stir in circles and the words wheel after the hand like leaves caught in an eddy; draw one long stroke and a whole line leans downstream, then rights itself, letter by letter, as the water forgets it was ever moved.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <figcaption class="fig-caption"><span data-text>Fig. 6c. The page under water</span><span data-text>MouseFluid.distortionShader, per glyph</span></figcaption>
+                </figure>
+            </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Plate VII · The press -->
+            <section class="grid gap-x-[6vw] gap-y-10 px-[6vw] py-[12vh] md:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
+                <div class="flex max-w-[420px] flex-col gap-3.5">
+                    <span class="eyebrow" data-text>Plate VII · Of the press itself</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text>A thousand lines, one pull.</h2>
+                    <p class="bestiary-latin m-0" data-text>Mille lineae, una impressio.</p>
+                    <p class="m-0 text-body text-pretty" data-text>Columns, justification, small capitals and the margin all follow the page. Scroll fast: the whole volume is a single draw.</p>
+                    <p class="m-0 text-body text-pretty" data-text>What the font cannot draw, ✦ or 日本語, stays in the page entire, and the console says why.</p>
+                    <dl class="bestiary-marks">
+                        <dt data-text>Per frame</dt><dd data-text>One draw for each ink</dd>
+                        <dt data-text>Per scroll</dt><dd data-text>One transform, no reads</dd>
+                        <dt data-text>The pack</dt><dd data-text>Five faces, ASCII and points</dd>
+                    </dl>
+                </div>
+                <div class="columns-[220px_3] gap-7 text-[15px] leading-[1.5] text-body [&_p]:mb-2.5" data-stress>
+                    <p class="text-justify" data-text><span class="float-left pt-1 pr-2 font-fell text-[64px] leading-[0.8] text-rubric">O</span>utline, curve and band; glyph, pixel and winding; the coverage of a quadratic laid by the browser, kerned upon its baseline, struck by a ray through every texel of the instance.</p>
+                </div>
+            </section>
+
+            <!-- Plate VIII · By candlelight: the dark ground is a WebGL plane (a DOM background would hide the canvas
+                 behind the page), the letters are lit by a point light that follows the mouse -->
+            <section class="relative grid gap-x-[6vw] gap-y-12 px-[6vw] py-[16vh] text-paper md:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]" data-candle>
+                <div class="flex max-w-[420px] flex-col gap-3.5">
+                    <span class="eyebrow !text-[#d9785f]" data-text="candle-small">Plate VIII · Of reading by candle</span>
+                    <h2 class="m-0 font-fell text-[clamp(44px,5vw,72px)] font-normal leading-[0.95]" data-text="candle">The night office.</h2>
+                    <p class="bestiary-latin m-0 !text-[#b9b3a4]" data-text="candle-small">Lux in tenebris lucet.</p>
+                    <p class="m-0 text-[#d8d3c6] text-pretty" data-text="candle-small">The chapel is dark and the book is open. Carry the candle with the hand: the letters are lit by it, as the page is, and fall back into the dark behind it.</p>
+                    <dl class="bestiary-marks !border-[#5a574f] [&_dd]:!text-[#d8d3c6]">
+                        <dt data-text="candle-small">Material</dt><dd data-text="candle-small">MeshPhongMaterial</dd>
+                        <dt data-text="candle-small">The candle</dt><dd data-text="candle-small">A PointLight on the mouse</dd>
+                        <dt data-text="candle-small">The page</dt><dd data-text="candle-small">A lit PlaneBackground</dd>
+                    </dl>
+                </div>
+                <div class="flex flex-col gap-8 font-fell text-[clamp(28px,3vw,44px)] leading-[1.25]">
+                    <p class="m-0" data-text="candle">At the third hour of the night the brothers rise and go down to the choir, each with his own small flame, and read by it the psalms that were written for that hour.</p>
+                    <p class="m-0 italic" data-text="candle">A candle shows only a hand's breadth of the page at a time. The rest of the book waits in the dark, and the eye follows the light down the column, one line and then the next.</p>
+                    <p class="m-0" data-text="candle">So move the hand slowly, and read what it lights.</p>
+                </div>
+            </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Outro -->
+            <section class="flex flex-col gap-12 border-t border-ink px-[6vw] pt-[16vh] pb-[30px]">
+                <p class="m-0 font-fell text-[clamp(56px,11vw,180px)] leading-[0.86]" data-text>Set<br /><span class="italic text-rubric">your own.</span></p>
+                <div class="flex flex-wrap items-stretch gap-3.5">
+                    <code class="border border-ink bg-paper px-[18px] py-3.5 font-mono text-[15px]">npx keemera-font your-face.ttf -o public/fonts/liber.kfont</code>
+                    <a href="https://github.com" class="btn-source">Read the source</a>
+                </div>
+                <div class="flex flex-wrap justify-between gap-3 border-t border-ink pt-[18px] font-fell-sc text-[15px] tracking-[0.1em] text-muted">
+                    <span data-text>One layer · seven plates of letters</span><span data-text>Slug · Three · Lenis</span>
+                </div>
+            </section>
+
+            <div class="ornament" aria-hidden="true"><span></span>❧<span></span></div>
+
+            <!-- Colophon -->
+            <footer class="flex flex-col items-center gap-3 border-t border-ink px-[6vw] pt-16 pb-20 text-center">
+                <span class="font-fell text-[28px] text-rubric" aria-hidden="true">❧</span>
+                <p class="m-0 font-fell-sc text-[17px] tracking-[0.16em]" data-text>Explicit Liber Litterarum</p>
+                <p class="m-0 font-fell text-[16px] italic text-muted" data-text>Set in IM Fell English and EB Garamond. Inked by Slug, after Lengyel; read back after Landberg.</p>
+            </footer>
         </main>
 
-        <div class="hud" data-hud></div>
+        <!-- live readout of app.store and the layer -->
+        <aside class="pointer-events-none fixed right-5 bottom-5 z-40 grid grid-cols-[auto_auto] gap-x-[18px] gap-y-[3px] border border-ink bg-paper px-3.5 py-3 font-mono text-[12px] leading-[1.5] whitespace-nowrap">
+            <span class="col-span-full mb-1 font-fell-sc text-[14px] tracking-[0.12em] text-rubric">TextLayer, live</span>
+            <span class="text-muted">fps</span><span data-hud="fps">–</span>
+            <span class="text-muted">draws</span><span data-hud="draws">–</span>
+            <span class="text-muted">blocks</span><span data-hud="blocks">–</span>
+            <span class="text-muted">glyphs</span><span data-hud="glyphs">–</span>
+            <span class="text-muted">W</span><span data-hud="mode">glyphs</span>
+        </aside>
 
         <script type="module" src="./text.js"></script>
     </body>

@@ -42,7 +42,7 @@
         "release": "npm version",
         "postversion": "git push --follow-tags",
         "typecheck": "tsc",
-        "fonts": "node cli/keemera-font.js examples/assets/fonts/Geist-Regular.woff2 examples/assets/fonts/Geist-Italic.woff2 examples/assets/fonts/Geist-Medium.woff2 examples/assets/fonts/Geist-Bold.woff2 -o examples/assets/fonts/geist.kfont"
+        "fonts": "node cli/keemera-font.js examples/assets/fonts/IMFellEnglish-Regular.ttf examples/assets/fonts/IMFellEnglish-Italic.ttf examples/assets/fonts/IMFellEnglishSC-Regular.ttf examples/assets/fonts/EBGaramond-Variable.ttf examples/assets/fonts/EBGaramond-Italic-Variable.ttf -r ascii -c \"’‘“”·—–…×²\" -o examples/assets/fonts/liber.kfont"
     },
     "engines": {
         "node": ">=20.19.0"
