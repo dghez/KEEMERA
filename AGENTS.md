@@ -57,7 +57,7 @@ npm run dev       # examples/basic, aliases `@dghez/keemera/*` to src/ (no build
 npm run typecheck # tsc --noEmit, strict
 npm run lint      # eslint src examples scripts
 npm run build     # vite build + tsc declarations to dist/
-npm run fonts     # re-bake examples/assets/fonts/geist.kfont with cli/keemera-font.js
+npm run fonts     # re-bake examples/assets/fonts/liber.kfont (IM Fell English, EB Garamond) with cli/keemera-font.js
 ```
 
 There is no test runner. Verify changes with `npm run typecheck`, `npm run lint`, `npm run build`, and by running `npm run dev` (add `?debug` to the URL for state logs). Exercise new public API in `examples/basic` when it makes sense.

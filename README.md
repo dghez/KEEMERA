@@ -706,6 +706,7 @@ npx keemera-font Geist-Regular.woff2 Geist-Italic.woff2 Geist-Bold.woff2 -o publ
 | `-c, --chars` | Extra characters to include |
 | `-f, --family` | Family name to match in CSS (default: the font's typographic family) |
 | `-a, --axes` | Variable font instance, e.g. `wght=500,opsz=14` |
+| `-t, --tolerance` | Refit the outlines with fewer quadratic curves, staying within this distance, in em (default `0.0005`, invisible even on 200px type; `0` keeps every curve). Each pixel loops over the curves of its band, so fewer curves draw faster and the pack is smaller: about 40% fewer for a hand-cut face like IM Fell English. Corners sharper than 30° are kept |
 
 Each face is matched to the CSS by family, weight and style (read from the font). The pack is served publicly and contains the outlines: fine for OFL fonts, but check the licence of commercial ones.
 
@@ -731,15 +732,17 @@ text.track(stickyLabel, { live: true })
 text.untrack('h1') // gives the text back to the DOM
 ```
 
-Options: `store` (required), `fonts` (array of loaded packs; default: every `font` asset in `store.resources`), `hideDom` (default `true`), `compare` (default `false`, see below), `wireframe` (default `false`, see below), `budget` (ms of measuring per frame, default `4`; at least one element is measured each frame), `material` (see [Materials](#textlayer-materials)).
+Options: `store` (required), `fonts` (array of loaded packs; default: every `font` asset in `store.resources`), `hideDom` (default `true`), `compare` (default `false`, see below), `wireframe` (default `false`, see below), `budget` (ms of measuring per frame, default `4`; at least one element is measured each frame), `cullMargin` (px above and below the viewport still drawn, default `200`), `material` (see [Materials](#textlayer-materials)).
 
 `track(target, { live, material })` takes an element or a selector and returns a `TextBlock`. Use `live: true` for elements that move without the page reflowing (CSS `position: sticky`, CSS transforms): their rect is read every frame. `TextBlock` exposes `isDrawn`, `glyphCount`, `chars`, `words`, `lines` and `missing`. `text.invalidate()` measures every element again, e.g. after a style change the observers can't see.
+
+**Off-screen text costs nothing.** Each frame, a draw with no element within the viewport (plus `cullMargin`) is skipped, and inside a draw that runs, the glyphs of elements out of view collapse in the vertex shader before producing any pixel. Both use the rects the layer already knows: no DOM reads. So a long page with section-specific materials only pays for the sections on screen. Raise `cullMargin` if a shader moves glyphs further than that.
 
 It measures again on its own when an element resizes (ResizeObserver), when its text changes (MutationObserver), when the page's size changes, and when a web font finishes loading (`document.fonts`). The DOM copy gets `-webkit-text-fill-color: transparent` only after the first successful measure, so a cold font never flashes empty, plus `font-variant-ligatures: none` so the DOM and the GPU draw the same glyphs. Selected text shows the DOM copy over the highlight (an injected `::selection` rule), which looks right when the canvas sits behind the page.
 
 **Debugging the match:** `compare: true` paints the DOM copy red under the GPU copy. Matching text looks like one even color; any drift shows as a red fringe on one side. `wireframe: true` (or `layer.wireframe = true` at runtime, which recompiles the shader once) draws each glyph's ink box as a 1px outline instead of the glyph; combine it with `compare` to see the boxes over the DOM text.
 
-**Limitations:** an element that uses a character missing from the packs (or a font family with no baked face) stays in the DOM, with a console warning: it's never drawn with holes. No complex shaping (Arabic, Indic), OpenType features (small caps, alternates), color emoji or vertical writing. Faux bold/italic (a weight or style you didn't bake) won't match. CSS transforms on the text's ancestors are not supported, except through `live` for translations. Text decorations (underlines) stay in the DOM.
+**Limitations:** an element that uses a character missing from the packs (or a font family with no baked face) stays in the DOM, with a console warning: it's never drawn with holes. No complex shaping (Arabic, Indic), OpenType features (small caps, alternates), color emoji or vertical writing. Faux bold/italic (a weight or style you didn't bake) won't match. CSS transforms on the text's ancestors are not supported, except through `live` for translations. Text decorations (underlines) stay in the DOM. Hyphens the browser adds with `hyphens: auto` aren't in the text, so they aren't drawn: avoid it on tracked elements (soft hyphens, `&shy;`, have the same problem). An element whose position changes without its size or the page's size changing (a sibling's text grows) needs `text.invalidate()` or `live`.
 
 <a id="textlayer-materials"></a>**Materials.** Like [troika-three-text](https://github.com/protectwise/troika/tree/main/packages/troika-three-text), the text draws with **any three.js material**: the layer wraps it (the wrapper has your material as its prototype, so later changes to color, opacity, uniform values or `needsUpdate` show through) and injects Slug when the shader compiles. Elements that share a material share a draw call; each different material adds one.
 
@@ -787,8 +790,11 @@ What your shaders can read:
 | vertex | `keemeraGlyphUv` | 0–1 inside the glyph's quad |
 | vertex, fragment | `keemeraIndex` | `vec4(char, word, line, charInLine)` |
 | vertex | `keemeraSize` | font size, css px |
+| vertex | `keemeraSetGlyph(int index)`, `keemeraGlyphCount` | draw another glyph of the same face at this pen: `index` wraps over the face's letters and digits (`keemeraGlyphCount` of them). Call it before reading `position`; scrambles, ciphers, slot-machine reveals |
+| vertex | `keemeraSetPadding(float px)` | grows the glyph's quad by `px` (css) on every side, so effects can draw outside the glyph (blur, glow, outline). Call it before reading `position` |
 | vertex | `keemeraGlyphCenter`, `keemeraWordCenter`, `keemeraLineCenter` | centers of the glyph's ink box, its word and its line, in the same space as `position`: move a glyph, a word or a line as one piece around them |
 | vertex, fragment | `keemeraColor` | the DOM color, linear rgba |
+| fragment | `keemeraCoverageAt(vec2 offsetPx)` | the glyph's coverage `offsetPx` device pixels from this one: average a few for a blur, take the max for a glow or outline (pair with `keemeraSetPadding`) |
 | fragment | `keemeraCoverage` | how much of the pixel the glyph covers, 0–1. Computed before your `main()` and applied after it, so you can overwrite it: `keemeraCoverage = 1.0` draws the whole glyph rectangle |
 
 For example, pushing words away from the pointer (`uMouse` in world px; the example page does it letter by letter, word by word and line by line):
@@ -858,7 +864,7 @@ const vertexShader = /* glsl */ `
 nvm use          # Node 20.19+
 npm install
 npm run dev      # examples/basic playground (Lenis, Tracker, one instance); /text.html for TextLayer
-npm run fonts    # bake the example's Geist pack (examples/assets/fonts)
+npm run fonts    # bake the example's pack: IM Fell English + EB Garamond (examples/assets/fonts)
 npm run build    # dist/ (ESM, minified, one file per entry, no sourcemaps) + .d.ts
 npm run typecheck
 npm run lint
@@ -888,10 +894,10 @@ mkdir -p .claude/skills && cp -r node_modules/keemera/skills/keemera .claude/ski
 
 **New**
 
-- **`TextLayer` shard**: DOM text drawn by WebGL from the fonts' outlines (Slug), at the positions the browser laid it out. One instanced draw per font pack and material, re-measured only on resize, text or font changes. Draws with any three.js material, `ShaderMaterial` included, per element or for the whole layer (see [TextLayer](#textlayer)).
+- **`TextLayer` shard**: DOM text drawn by WebGL from the fonts' outlines (Slug), at the positions the browser laid it out. One instanced draw per font pack and material, re-measured only on resize, text or font changes. Draws with any three.js material, `ShaderMaterial` included, per element or for the whole layer; a vertex shader can swap a glyph for another of its face with `keemeraSetGlyph` (see [TextLayer](#textlayer)).
 - **`font` asset type**: loads `.kfont` packs. New types: `LoadedFont`, `FontPack`, `FontPackFace`, `FontGlyph`, `FontStyle`, `TextLayerProps`, `TextBlock`, `TextBlockOptions`.
-- **`keemera-font` CLI** (`npx keemera-font`): bakes TTF / OTF / WOFF / WOFF2 files into a `.kfont` pack. Needs `fontkit`, a new optional peer dependency.
-- Example: `examples/basic/text.html`, with Geist (OFL) self-hosted in `examples/assets/fonts`.
+- **`keemera-font` CLI** (`npx keemera-font`): bakes TTF / OTF / WOFF / WOFF2 files into a `.kfont` pack. Needs `fontkit`, a new optional peer dependency; outlines are refit with fewer curves within `--tolerance` (default 0.0005 em) so heavy faces draw faster. Off-screen text is culled per draw and per element (`cullMargin`).
+- Example: `examples/basic/text.html`, *Liber Litterarum*: eight plates in the homepage's manuscript style, with IM Fell English and EB Garamond (OFL) self-hosted in `examples/assets/fonts`.
 
 ### 0.1.7 (2026-11-17)
 
@@ -943,4 +949,4 @@ The library is now written in TypeScript. The runtime API is unchanged: JavaScri
 
 MIT
 
-`TextLayer`'s coverage shader is a port of Eric Lengyel's [Slug reference shaders](https://github.com/EricLengyel/Slug) (MIT / Apache-2.0); the Slug patent was dedicated to the public domain in March 2026. Reading glyph positions back from the DOM follows dom-gpu-text by Jesper Landberg (MIT). The example's Geist font is © The Geist Project Authors, SIL OFL 1.1 (`examples/assets/fonts/OFL.txt`).
+`TextLayer`'s coverage shader is a port of Eric Lengyel's [Slug reference shaders](https://github.com/EricLengyel/Slug) (MIT / Apache-2.0); the Slug patent was dedicated to the public domain in March 2026. Reading glyph positions back from the DOM follows dom-gpu-text by Jesper Landberg (MIT). The text example's fonts are IM Fell English, © Igino Marini, and EB Garamond, © The EB Garamond Project Authors, both SIL OFL 1.1 (`examples/assets/fonts/OFL-IMFell.txt`, `OFL-EBGaramond.txt`).
