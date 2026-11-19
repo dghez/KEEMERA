@@ -1,4 +1,4 @@
-import { Group, MeshBasicMaterial } from 'three'
+import { Group, MeshBasicMaterial, Vector2 } from 'three'
 import type { Material } from 'three'
 
 import FaceBatch from './FaceBatch'
@@ -24,6 +24,8 @@ export interface TextLayerProps {
     wireframe?: boolean
     // ms of measuring per frame, at least one element always goes; default 4
     budget?: number
+    // px beyond the viewport, above and below, still drawn: effects that move glyphs need the room; default 200
+    cullMargin?: number
     // the material every element draws with unless it has its own (track(el, { material })); default: unlit, the DOM color
     material?: Material
 }
@@ -64,6 +66,8 @@ export default class TextLayer extends Group {
 
     uniforms: {
         uKeemeraDpr: { value: number }
+        // the drawn band of the document: top, bottom (px, y down), with the margin
+        uKeemeraView: { value: Vector2 }
     }
 
     constructor(props: TextLayerProps) {
@@ -89,6 +93,7 @@ export default class TextLayer extends Group {
 
         this.uniforms = {
             uKeemeraDpr: { value: 1 },
+            uKeemeraView: { value: new Vector2(-Infinity, Infinity) },
         }
 
         this.#init()
@@ -367,6 +372,19 @@ export default class TextLayer extends Group {
         }
 
         if (this.#dirty.size) this.#measureDirty()
+        this.#cull()
+    }
+
+    // off-screen text costs nothing: a draw with no block in view is skipped, and inside a drawn one the vertex
+    // shader collapses the glyphs of blocks out of view. Rects are already known: no DOM reads
+    #cull() {
+        const { scroll, height } = this.#store.viewport
+        const margin = this.#props.cullMargin ?? 200
+        const top = scroll.y - margin
+        const bottom = scroll.y + height + margin
+
+        this.uniforms.uKeemeraView.value.set(top, bottom)
+        for (const batch of this.#eachBatch()) batch.cull(top, bottom)
     }
 
     resize() {

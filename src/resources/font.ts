@@ -31,6 +31,9 @@ export interface FontPackFace {
     ascent: number
     descent: number
     glyphs: Map<number, FontGlyph>
+    // this face's letters and digits in the pack's glyph table, for swapping glyphs in a shader
+    tableStart: number
+    tableCount: number
 }
 
 interface FaceMeta {
@@ -53,6 +56,11 @@ interface PackMeta {
     faces: FaceMeta[]
 }
 
+// letters and digits: what a shader may swap a glyph for (keemeraSetGlyph)
+const SWAPPABLE = /^[\p{L}\p{N}]$/u
+// two RGBA32F texels per glyph: ink box (x0, y0, x1, y1), then (locX, locY, bandMaxX, bandMaxY)
+const TABLE_WIDTH = 4096
+
 const createTexture = (data: Float32Array | Uint16Array, width: number, height: number, isBand: boolean) => {
     const texture = isBand
         ? new DataTexture(data, width, height, RGIntegerFormat, UnsignedShortType)
@@ -72,6 +80,7 @@ export default class FontPack {
     readonly faces: FontPackFace[]
     readonly curveTexture: DataTexture
     readonly bandTexture: DataTexture
+    readonly glyphTexture: DataTexture
 
     constructor(buffer: ArrayBuffer, name = 'font') {
         const view = new DataView(buffer)
@@ -98,6 +107,34 @@ export default class FontPack {
         this.curveTexture = createTexture(curves, width, curveRows, false)
         this.bandTexture = createTexture(bands, width, bandRows, true)
         this.faces = meta.faces.map(face => this.#createFace(face))
+        this.glyphTexture = this.#createGlyphTable()
+    }
+
+    // every face's swappable glyphs in one texture, each face a contiguous run
+    #createGlyphTable() {
+        const runs = this.faces.map((face) => {
+            const unique = new Set<FontGlyph>()
+            for (const [cp, glyph] of face.glyphs) {
+                if (glyph.locX >= 0 && SWAPPABLE.test(String.fromCodePoint(cp))) unique.add(glyph)
+            }
+            return [...unique]
+        })
+
+        const total = runs.reduce((sum, run) => sum + run.length, 0)
+        const height = Math.max(1, Math.ceil((total * 2) / TABLE_WIDTH))
+        const data = new Float32Array(TABLE_WIDTH * height * 4)
+
+        let index = 0
+        runs.forEach((run, f) => {
+            this.faces[f].tableStart = index
+            this.faces[f].tableCount = run.length
+            for (const g of run) {
+                data.set([g.x0, g.y0, g.x1, g.y1, g.locX, g.locY, g.bandMaxX, g.bandMaxY], index * 8)
+                index++
+            }
+        })
+
+        return createTexture(data, TABLE_WIDTH, height, false)
     }
 
     #createFace(meta: FaceMeta): FontPackFace {
@@ -117,12 +154,15 @@ export default class FontPack {
             ascent: meta.ascent,
             descent: meta.descent,
             glyphs: map,
+            tableStart: 0,
+            tableCount: 0,
         }
     }
 
     dispose() {
         this.curveTexture.dispose()
         this.bandTexture.dispose()
+        this.glyphTexture.dispose()
     }
 }
 

@@ -30,6 +30,8 @@ const MIN_CAPACITY = 256
 interface Range {
     start: number
     capacity: number
+    // the owner's document rect, live (the block updates it in place): for culling
+    rect?: BlockRect
 }
 
 interface Arrays {
@@ -96,6 +98,7 @@ export default class FaceBatch {
             ...uniforms,
             uKeemeraCurves: { value: pack.curveTexture },
             uKeemeraBands: { value: pack.bandTexture },
+            uKeemeraGlyphs: { value: pack.glyphTexture },
         })
         this.material.keemeraWireframe = wireframe
 
@@ -168,7 +171,7 @@ export default class FaceBatch {
             const from = range.start * ITEM_SIZE
             const to = from + range.capacity * ITEM_SIZE
             for (const name of KEYS) next[name].set(old[name].subarray(from, to), cursor * ITEM_SIZE)
-            this.#ranges.set(key, { start: cursor, capacity: range.capacity })
+            this.#ranges.set(key, { start: cursor, capacity: range.capacity, rect: range.rect })
             cursor += range.capacity
         }
         this.#ranges.delete(owner)
@@ -183,7 +186,7 @@ export default class FaceBatch {
         previous.dispose()
     }
 
-    #reserve(owner: object, count: number) {
+    #reserve(owner: object, count: number): Range {
         const current = this.#ranges.get(owner)
         if (current && count <= current.capacity) return current
 
@@ -195,7 +198,7 @@ export default class FaceBatch {
         const capacity = Math.ceil(count * 1.25) + 4
         if (this.#cursor + capacity > this.#capacity) this.#grow(owner, capacity)
 
-        const range = { start: this.#cursor, capacity }
+        const range: Range = { start: this.#cursor, capacity }
         this.#cursor += capacity
         this.#ranges.set(owner, range)
         this.mesh.geometry.instanceCount = this.#cursor
@@ -216,6 +219,7 @@ export default class FaceBatch {
     // all of a block's glyphs in this pack, pens relative to the block
     write(owner: object, glyphs: PlacedGlyph[], rect: BlockRect) {
         const range = this.#reserve(owner, glyphs.length)
+        range.rect = rect
         const { pen, anchor, box, glyph: data, color, index } = this.#arrays
         this.#fillBlock(range, rect)
 
@@ -231,12 +235,13 @@ export default class FaceBatch {
             pen[o] = g.x
             pen[o + 1] = g.y
             pen[o + 2] = g.size
-            pen[o + 3] = 0
+            // where this glyph's face starts in the pack's glyph table, and how many it has
+            pen[o + 3] = g.face.tableStart
 
             anchor[o] = g.wordX
             anchor[o + 1] = g.lineX
             anchor[o + 2] = g.lineY
-            anchor[o + 3] = 0
+            anchor[o + 3] = g.face.tableCount
 
             const { glyph } = g
             box[o] = glyph.x0
@@ -281,6 +286,18 @@ export default class FaceBatch {
             this.mesh.geometry.instanceCount = 0
             this.mesh.visible = false
         }
+    }
+
+    // skips the whole draw when none of its blocks reaches the view: [top, bottom] in document px, y down
+    cull(top: number, bottom: number) {
+        let visible = false
+        for (const { rect } of this.#ranges.values()) {
+            if (rect && rect.y < bottom && rect.y + rect.height > top) {
+                visible = true
+                break
+            }
+        }
+        this.mesh.visible = visible
     }
 
     get isEmpty() {

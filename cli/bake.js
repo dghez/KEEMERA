@@ -14,6 +14,15 @@ const BAND_SLACK = 1
 
 const round = v => Math.round(v * 1e5) / 1e5
 
+// default refit tolerance, em: 1/2000 em is 0.1 px on 200 px type
+export const DEFAULT_TOLERANCE = 0.0005
+// never merge across a turn sharper than this (radians): corners stay corners
+const CORNER_ANGLE = (30 * Math.PI) / 180
+// longest run of segments one quadratic may replace
+const MAX_RUN = 12
+// samples per original segment when fitting and checking a run
+const FIT_SAMPLES = 8
+
 /* ───────── Outlines ───────── */
 
 // fontkit path → closed contours of quadratics [x1, y1, x2, y2, x3, y3], em units, y up
@@ -83,6 +92,90 @@ export function glyphContours(glyph, unitsPerEm) {
     close()
 
     return contours
+}
+
+/* ───────── Simplification ───────── */
+
+const quadAt = (c, t) => {
+    const u = 1 - t
+    return [u * u * c[0] + 2 * u * t * c[2] + t * t * c[4], u * u * c[1] + 2 * u * t * c[3] + t * t * c[5]]
+}
+
+// direction leaving / entering a segment; a line's control sits on its end point
+const startTangent = c => (c[2] !== c[0] || c[3] !== c[1] ? [c[2] - c[0], c[3] - c[1]] : [c[4] - c[0], c[5] - c[1]])
+const endTangent = c => (c[4] !== c[2] || c[5] !== c[3] ? [c[4] - c[2], c[5] - c[3]] : [c[4] - c[0], c[5] - c[1]])
+
+const angleBetween = (a, b) => {
+    const la = Math.hypot(a[0], a[1])
+    const lb = Math.hypot(b[0], b[1])
+    if (!la || !lb) return 0
+    return Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1]) / (la * lb))))
+}
+
+// one quadratic through a run of segments: same end points, control by least squares on chord-length samples.
+// Returns it if every sample of the run lies within `tolerance` of it, else null
+function fitRun(run, tolerance) {
+    const points = [[run[0][0], run[0][1]]]
+    for (const c of run) {
+        for (let i = 1; i <= FIT_SAMPLES; i++) points.push(quadAt(c, i / FIT_SAMPLES))
+    }
+
+    const lengths = [0]
+    for (let i = 1; i < points.length; i++) {
+        lengths.push(lengths[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]))
+    }
+    const total = lengths[lengths.length - 1]
+    if (!total) return null
+
+    const [x0, y0] = points[0]
+    const [x2, y2] = points[points.length - 1]
+    let sx = 0, sy = 0, sw = 0
+    for (let i = 1; i < points.length - 1; i++) {
+        const t = lengths[i] / total
+        const u = 1 - t
+        const w = 2 * u * t
+        sx += w * (points[i][0] - u * u * x0 - t * t * x2)
+        sy += w * (points[i][1] - u * u * y0 - t * t * y2)
+        sw += w * w
+    }
+    if (!sw) return null
+
+    const fitted = [x0, y0, sx / sw, sy / sw, x2, y2]
+    // exactly horizontal or vertical runs stay exact, so the band builder can still drop them from the cross bands
+    if (points.every(p => p[1] === y0)) fitted[3] = y0
+    if (points.every(p => p[0] === x0)) fitted[2] = x0
+
+    // distance of each sample to the fitted curve (dense, so parameter drift doesn't count as error)
+    const dense = Array.from({ length: 65 }, (_, i) => quadAt(fitted, i / 64))
+    for (const p of points) {
+        let best = Infinity
+        for (const q of dense) best = Math.min(best, (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
+        if (best > tolerance * tolerance) return null
+    }
+    return fitted
+}
+
+// fewer quadratics for the same outline, within `tolerance` em: hand-cut and scanned faces carry many tiny segments
+// that cost every pixel a loop iteration. Greedy: grow each run while one quadratic still fits it
+export function simplifyContour(contour, tolerance) {
+    if (!tolerance || contour.length < 2) return contour
+
+    const out = []
+    let i = 0
+    while (i < contour.length) {
+        let fitted = contour[i]
+        let end = i
+        while (end + 1 < contour.length && end + 1 - i < MAX_RUN) {
+            if (angleBetween(endTangent(contour[end]), startTangent(contour[end + 1])) > CORNER_ANGLE) break
+            const candidate = fitRun(contour.slice(i, end + 2), tolerance)
+            if (!candidate) break
+            fitted = candidate
+            end++
+        }
+        out.push(fitted)
+        i = end + 1
+    }
+    return out
 }
 
 /* ───────── Bands ───────── */
@@ -221,7 +314,7 @@ function packGlyph(contours, curveStream, bandStream) {
  * faces: [{ font (fontkit), family, weight, style }]; codepoints: Set or 'all'
  * Returns { meta, curves: Float32Array, bands: Uint16Array, stats }
  */
-export function bake(faces, codepoints) {
+export function bake(faces, codepoints, { tolerance = DEFAULT_TOLERANCE } = {}) {
     const curveStream = new TexelStream(4)
     const bandStream = new TexelStream(2)
     const stats = []
@@ -241,7 +334,7 @@ export function bake(faces, codepoints) {
             let index = byGlyph.get(glyph.id)
             if (index === undefined) {
                 const advance = round(glyph.advanceWidth / upm)
-                const contours = glyphContours(glyph, upm)
+                const contours = glyphContours(glyph, upm).map(c => simplifyContour(c, tolerance))
                 if (contours.length) {
                     const { entry, curveCount } = packGlyph(contours, curveStream, bandStream)
                     glyphs.push([...entry, advance])

@@ -17,6 +17,8 @@ in vec4 aColor;
 in vec4 aIndex;
 
 uniform float uKeemeraDpr;
+// the drawn band of the document, top and bottom (px, y down): blocks outside it are skipped
+uniform vec2 uKeemeraView;
 
 out vec2 vKeemeraEm;
 flat out vec4 vKeemeraBanding;
@@ -38,23 +40,28 @@ float keemeraSize;
 vec2 keemeraGlyphCenter;
 vec2 keemeraWordCenter;
 vec2 keemeraLineCenter;
+// how many glyphs keemeraSetGlyph() picks from: this face's letters and digits
+int keemeraGlyphCount;
+
+uniform sampler2D uKeemeraGlyphs;
+vec2 keemeraCorner;
+vec4 keemeraBox;
+uvec4 keemeraGlyphData;
+float keemeraExtraPad;
 
 // px relative to the element, y down → the layer's space, y up
 vec2 keemeraToLayer(vec2 local) {
   return vec2(aBlock.x + local.x, -(aBlock.y + local.y));
 }
 
-bool keemeraTextVertex() {
-  // aPen: pen on the baseline relative to the element (px, y down), font size (px)
-  // aBlock: the element's document position and size (px, y down)
-  keemeraSize = aPen.z;
+// lays the quad out for a glyph, at this instance's pen: its box (em, y up) and band data
+void keemeraPlaceGlyph(vec4 box, uvec4 glyph) {
+  keemeraBox = box;
+  keemeraGlyphData = glyph;
 
-  // unused slot of a block's range
-  if (keemeraSize <= 0.0) return false;
-
-  // coverage reaches half a device pixel past the ink box, plus slack
-  float pad = 0.625 / (keemeraSize * uKeemeraDpr);
-  vec2 em = mix(aBox.xy - pad, aBox.zw + pad, position.xy);
+  // coverage reaches half a device pixel past the ink box, plus slack, plus what the material asked for
+  float pad = 0.625 / (keemeraSize * uKeemeraDpr) + keemeraExtraPad / keemeraSize;
+  vec2 em = mix(box.xy - pad, box.zw + pad, keemeraCorner);
 
   // document px, y down; the layer's content group holds scroll and the viewport offset
   vec2 doc = aBlock.xy + aPen.xy + vec2(em.x, -em.y) * keemeraSize;
@@ -63,25 +70,58 @@ bool keemeraTextVertex() {
     (doc.x - aBlock.x) / max(aBlock.z, 1e-6),
     1.0 - (doc.y - aBlock.y) / max(aBlock.w, 1e-6)
   );
-  keemeraGlyphUv = position.xy;
-  keemeraGlyphCenter = keemeraToLayer(aPen.xy + vec2(aBox.x + aBox.z, -(aBox.y + aBox.w)) * 0.5 * keemeraSize);
+  keemeraGlyphUv = keemeraCorner;
+  keemeraGlyphCenter = keemeraToLayer(aPen.xy + vec2(box.x + box.z, -(box.y + box.w)) * 0.5 * keemeraSize);
+
+  // the bake splits the ink box into even bands, so their transform follows from it
+  vec2 bandScale = (vec2(glyph.zw) + 1.0) / max(box.zw - box.xy, vec2(1e-6));
+
+  vKeemeraEm = em;
+  vKeemeraBanding = vec4(bandScale, -box.xy * bandScale);
+  vKeemeraGlyph = ivec4(glyph);
+  #ifdef KEEMERA_TEXT_WIREFRAME
+    vKeemeraBox = box;
+  #endif
+}
+
+// draws another glyph of the same face at this pen: index wraps over keemeraGlyphCount (letters and digits).
+// Call it before reading position
+void keemeraSetGlyph(int index) {
+  if (keemeraGlyphCount <= 0) return;
+  int texel = (int(aPen.w) + ((index % keemeraGlyphCount) + keemeraGlyphCount) % keemeraGlyphCount) * 2;
+  vec4 box = texelFetch(uKeemeraGlyphs, ivec2(texel % 4096, texel / 4096), 0);
+  vec4 glyph = texelFetch(uKeemeraGlyphs, ivec2((texel + 1) % 4096, (texel + 1) / 4096), 0);
+  keemeraPlaceGlyph(box, uvec4(glyph));
+}
+
+// grows the quad by px (css) on every side: room for effects that draw outside the glyph (blur, glow, outline).
+// Call it before reading position
+void keemeraSetPadding(float px) {
+  keemeraExtraPad = max(px, 0.0);
+  keemeraPlaceGlyph(keemeraBox, keemeraGlyphData);
+}
+
+bool keemeraTextVertex() {
+  // aPen: pen on the baseline relative to the element (px, y down), font size (px), face's glyph table start
+  // aBlock: the element's document position and size (px, y down)
+  // aAnchor: word center x, line center x, y (px from the element), face's glyph table count
+  keemeraSize = aPen.z;
+
+  // unused slot of a block's range, or a block out of view
+  if (keemeraSize <= 0.0) return false;
+  if (aBlock.y > uKeemeraView.y || aBlock.y + aBlock.w < uKeemeraView.x) return false;
+
+  keemeraCorner = position.xy;
+  keemeraExtraPad = 0.0;
+  keemeraGlyphCount = int(aAnchor.w);
   keemeraWordCenter = keemeraToLayer(aAnchor.xz);
   keemeraLineCenter = keemeraToLayer(aAnchor.yz);
   keemeraIndex = aIndex;
   keemeraColor = aColor;
-
-  // the bake splits the ink box into even bands, so their transform follows from it
-  vec2 bandScale = (vec2(aGlyph.zw) + 1.0) / max(aBox.zw - aBox.xy, vec2(1e-6));
-
-  vKeemeraEm = em;
-  vKeemeraBanding = vec4(bandScale, -aBox.xy * bandScale);
-  vKeemeraGlyph = ivec4(aGlyph);
   vKeemeraColor = aColor;
   vKeemeraIndex = aIndex;
-  #ifdef KEEMERA_TEXT_WIREFRAME
-    vKeemeraBox = aBox;
-  #endif
 
+  keemeraPlaceGlyph(aBox, aGlyph);
   return true;
 }
 
@@ -119,6 +159,8 @@ flat in vec4 vKeemeraIndex;
 vec4 keemeraColor;
 vec4 keemeraIndex;
 float keemeraCoverage;
+// this pixel's size in em
+vec2 keemeraEmsPerPixel;
 
 float keemeraClamp01(float x) {
   return clamp(x, 0.0, 1.0);
@@ -189,11 +231,8 @@ float keemeraCoverageOf(float xcov, float ycov, float xwgt, float ywgt) {
   return keemeraClamp01(coverage);
 }
 
-float keemeraSlug(vec2 renderCoord, vec4 bandTransform, ivec4 glyphData) {
-  // pixel footprint in em, before anything conditional
-  vec2 emsPerPixel = fwidth(renderCoord);
-  vec2 pixelsPerEm = 1.0 / emsPerPixel;
-
+// pixelsPerEm comes from the pixel's own footprint (fwidth in uniform control flow), so it can be called anywhere
+float keemeraSlugAt(vec2 renderCoord, vec2 pixelsPerEm, vec4 bandTransform, ivec4 glyphData) {
   ivec2 bandMax = glyphData.zw;
   ivec2 bandIndex = clamp(ivec2(renderCoord * bandTransform.xy + bandTransform.zw), ivec2(0), bandMax);
   ivec2 glyphLoc = glyphData.xy;
@@ -264,6 +303,12 @@ float keemeraSlug(vec2 renderCoord, vec4 bandTransform, ivec4 glyphData) {
   return keemeraCoverageOf(xcov, ycov, xwgt, ywgt);
 }
 
+// the glyph's coverage offsetPx device pixels away from this one: blur, glow, outlines, chromatic shifts.
+// Reach past the glyph with keemeraSetPadding in the vertex shader
+float keemeraCoverageAt(vec2 offsetPx) {
+  return keemeraSlugAt(vKeemeraEm + offsetPx * keemeraEmsPerPixel, 1.0 / keemeraEmsPerPixel, vKeemeraBanding, vKeemeraGlyph);
+}
+
 #ifdef KEEMERA_TEXT_WIREFRAME
   flat in vec4 vKeemeraBox;
 
@@ -279,10 +324,11 @@ float keemeraSlug(vec2 renderCoord, vec4 bandTransform, ivec4 glyphData) {
 export const fragmentMain = /* glsl */`
 void main() {
   // first: fwidth needs uniform control flow, before any discard in the material
+  keemeraEmsPerPixel = fwidth(vKeemeraEm);
   #ifdef KEEMERA_TEXT_WIREFRAME
     keemeraCoverage = keemeraWireframe(vKeemeraEm, vKeemeraBox);
   #else
-    keemeraCoverage = keemeraSlug(vKeemeraEm, vKeemeraBanding, vKeemeraGlyph);
+    keemeraCoverage = keemeraSlugAt(vKeemeraEm, 1.0 / keemeraEmsPerPixel, vKeemeraBanding, vKeemeraGlyph);
   #endif
   keemeraColor = vKeemeraColor;
   keemeraIndex = vKeemeraIndex;

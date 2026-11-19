@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { bake, encode } from './bake.js'
+import { bake, DEFAULT_TOLERANCE, encode } from './bake.js'
 import { codepointsFromRanges, codepointsFromText } from './charsets.js'
 
 const USAGE = `Bake fonts into a .kfont pack for keemera's TextLayer
@@ -20,6 +20,7 @@ Options
   -c, --chars <text>    extra characters to include
   -f, --family <name>   family name to match in CSS (default: the font's own)
   -a, --axes <values>   variable font instance, e.g. wght=500,opsz=14
+  -t, --tolerance <em>  refit outlines with fewer curves within this distance, em (default ${DEFAULT_TOLERANCE}, 0 = off)
   -h, --help            show this message
 `
 
@@ -31,6 +32,7 @@ const { values, positionals } = parseArgs({
         chars: { type: 'string', short: 'c', default: '' },
         family: { type: 'string', short: 'f' },
         axes: { type: 'string', short: 'a' },
+        tolerance: { type: 'string', short: 't' },
         help: { type: 'boolean', short: 'h' },
     },
 })
@@ -88,7 +90,12 @@ const faces = positionals.map((path) => {
     }
 })
 
-const baked = bake(faces, codepoints)
+const tolerance = values.tolerance === undefined ? DEFAULT_TOLERANCE : Number(values.tolerance)
+if (!Number.isFinite(tolerance) || tolerance < 0) {
+    throw new Error(`[Keemera] Invalid --tolerance "${values.tolerance}". Use a distance in em, e.g. 0.0005, or 0 to keep every curve`)
+}
+
+const baked = bake(faces, codepoints, { tolerance })
 const file = encode(baked)
 const out = resolve(values.out)
 

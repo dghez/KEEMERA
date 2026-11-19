@@ -43,6 +43,9 @@ export interface MouseFluidDistortionSettings {
 
 export type MouseFluidDistortionPreset = { [K in keyof MouseFluidDistortionSettings]: MouseFluidDistortionSettings[K]['value'] }
 
+// NDC per frame under which the mouse counts as still (about half a pixel on a 1000px screen)
+const STILL_SPEED = 0.001
+
 const DISTORTION_PRESET: Readonly<MouseFluidDistortionPreset> = Object.freeze({
     rgbShift: new Vector3(2.1, 2.2, 2.3),
     rgbShiftFact: 0.5,
@@ -292,6 +295,9 @@ export default class MouseFluid extends Group {
         // NDC to screen uv
         uMouse.value.set((smooth.x + 1) * 0.5, (smooth.y + 1) * 0.5)
         uSpeed.value.subVectors(smooth, this.#prevMouse)
+        // the eased mouse creeps toward the pointer for seconds after it stops: below a crawl the brush rests,
+        // or the normalized speed keeps painting full velocity under a still cursor
+        if (uSpeed.value.lengthSq() < STILL_SPEED * STILL_SPEED) uSpeed.value.set(0, 0)
         uNormalizedSpeed.value.copy(uSpeed.value).normalize()
         this.#prevMouse.copy(smooth)
 
